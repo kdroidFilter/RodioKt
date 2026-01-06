@@ -16,6 +16,7 @@ import androidx.compose.material.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,9 +26,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
-import io.github.kdroidfilter.rodio.PlaybackCallback
-import io.github.kdroidfilter.rodio.PlaybackEvent
+import io.github.kdroidfilter.rodio.native.PlaybackCallback
+import io.github.kdroidfilter.rodio.native.PlaybackEvent
 import io.github.kdroidfilter.rodio.RodioPlayer
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -35,7 +37,9 @@ import kotlin.math.roundToInt
 fun App() {
     val player = remember { RodioPlayer() }
     val scope = rememberCoroutineScope()
-    var playbackEvent by remember { mutableStateOf(PlaybackEvent.Stopped) }
+    var playbackEvent by remember { mutableStateOf(PlaybackEvent.STOPPED) }
+    var positionMs by remember { mutableStateOf(0L) }
+    var durationMs by remember { mutableStateOf<Long?>(null) }
     val playbackCallback = remember {
         object : PlaybackCallback {
             override fun onEvent(event: PlaybackEvent) {
@@ -49,7 +53,7 @@ fun App() {
 
             override fun onError(message: String) {
                 println("Playback error: $message")
-                scope.launch { playbackEvent = PlaybackEvent.Stopped }
+                scope.launch { playbackEvent = PlaybackEvent.STOPPED }
             }
         }
     }
@@ -60,17 +64,26 @@ fun App() {
             player.close()
         }
     }
+    LaunchedEffect(player) {
+        while (true) {
+            positionMs = player.getPositionMs()
+            durationMs = player.getDurationMs()
+            delay(200)
+        }
+    }
 
     val defaultStreamUrl = "https://broadcast.adpronet.com/radio/6060/radio.mp3"
     var streamUrl by remember { mutableStateOf(defaultStreamUrl) }
     var volume by remember { mutableStateOf(1f) }
-    val isPlaying = playbackEvent == PlaybackEvent.Playing || playbackEvent == PlaybackEvent.Connecting
     val statusLabel = when (playbackEvent) {
-        PlaybackEvent.Connecting -> "Connecting"
-        PlaybackEvent.Playing -> "Playing"
-        PlaybackEvent.Paused -> "Paused"
-        PlaybackEvent.Stopped -> "Stopped"
+        PlaybackEvent.CONNECTING -> "Connecting"
+        PlaybackEvent.PLAYING -> "Playing"
+        PlaybackEvent.PAUSED -> "Paused"
+        PlaybackEvent.STOPPED -> "Stopped"
     }
+    val progress = durationMs
+        ?.takeIf { it > 0L }
+        ?.let { positionMs.coerceAtMost(it).toFloat() / it.toFloat() }
 
     Box(
         modifier = Modifier
@@ -91,10 +104,10 @@ fun App() {
 
             BasicText("Playback: $statusLabel")
             androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(8.dp))
-            if (isPlaying) {
+            if (progress == null) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             } else {
-                LinearProgressIndicator(progress = 0f, modifier = Modifier.fillMaxWidth())
+                LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
             }
             androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(24.dp))
 

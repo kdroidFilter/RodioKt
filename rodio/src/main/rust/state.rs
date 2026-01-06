@@ -4,6 +4,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use rodio::{OutputStream, OutputStreamBuilder, Sink};
 
@@ -13,6 +14,7 @@ use crate::PlaybackCallback;
 pub struct PlayerState {
     pub sink: Sink,
     pub callback: Option<Arc<dyn PlaybackCallback>>,
+    pub current_duration: Option<Duration>,
 }
 
 impl PlayerState {
@@ -23,6 +25,7 @@ impl PlayerState {
             Self {
                 sink,
                 callback: None,
+                current_duration: None,
             },
             stream,
         ))

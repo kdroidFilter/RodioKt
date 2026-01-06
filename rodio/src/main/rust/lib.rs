@@ -200,6 +200,10 @@ fn parse_icy_metadata_block(bytes: &[u8]) -> Vec<(String, String)> {
         .collect()
 }
 
+fn duration_to_millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
 fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -381,7 +385,9 @@ pub fn player_play_file(id: u64, path: String, looped: bool) -> Result<(), Rodio
     let result = (|| {
         let file = File::open(path)?;
         let decoder = Decoder::try_from(BufReader::new(file))?;
-        with_player(id, |state| {
+        let duration = decoder.total_duration();
+        with_player_mut(id, |state| {
+            state.current_duration = if looped { None } else { duration };
             if looped {
                 state.sink.append(decoder.repeat_infinite());
             } else {
@@ -411,9 +417,11 @@ pub fn player_play_sine(
         return Err(RodioError::InvalidDuration(duration_ms));
     }
     let callback = player_callback(id)?;
-    let result = with_player(id, |state| {
+    let duration = Duration::from_millis(duration_ms);
+    let result = with_player_mut(id, |state| {
+        state.current_duration = Some(duration);
         let source = SineWave::new(frequency_hz)
-            .take_duration(Duration::from_millis(duration_ms));
+            .take_duration(duration);
         state.sink.append(source);
         Ok(())
     });
@@ -434,7 +442,8 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
             let bytes = download_bytes(&url)?;
             let cursor = Cursor::new(bytes);
             let decoder = Decoder::new_looped(cursor)?;
-            with_player(id, |state| {
+            with_player_mut(id, |state| {
+                state.current_duration = None;
                 state.sink.append(decoder);
                 Ok(())
             })
@@ -446,7 +455,9 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
             let meta_interval = icy_metaint(response.headers());
             let reader = StreamReader::new(response, meta_interval, callback.clone());
             let decoder = build_stream_decoder(reader, content_type.as_deref(), &url)?;
-            with_player(id, |state| {
+            let duration = decoder.total_duration();
+            with_player_mut(id, |state| {
+                state.current_duration = duration;
                 state.sink.append(decoder);
                 Ok(())
             })
@@ -522,7 +533,9 @@ pub fn player_play_radio(id: u64, url: String) -> Result<(), RodioError> {
         let meta_interval = icy_metaint(response.headers());
         let reader = StreamReader::new(response, meta_interval, callback.clone());
         let decoder = build_stream_decoder(reader, content_type.as_deref(), &final_url)?;
-        with_player(id, |state| {
+        let duration = decoder.total_duration();
+        with_player_mut(id, |state| {
+            state.current_duration = duration;
             state.sink.append(decoder);
             Ok(())
         })
@@ -557,7 +570,8 @@ pub fn player_pause(id: u64) -> Result<(), RodioError> {
 
 #[uniffi::export]
 pub fn player_stop(id: u64) -> Result<(), RodioError> {
-    let callback = with_player(id, |state| {
+    let callback = with_player_mut(id, |state| {
+        state.current_duration = None;
         state.sink.stop();
         Ok(state.callback.clone())
     })?;
@@ -567,7 +581,8 @@ pub fn player_stop(id: u64) -> Result<(), RodioError> {
 
 #[uniffi::export]
 pub fn player_clear(id: u64) -> Result<(), RodioError> {
-    let callback = with_player(id, |state| {
+    let callback = with_player_mut(id, |state| {
+        state.current_duration = None;
         state.sink.clear();
         Ok(state.callback.clone())
     })?;
@@ -583,6 +598,16 @@ pub fn player_is_paused(id: u64) -> Result<bool, RodioError> {
 #[uniffi::export]
 pub fn player_is_empty(id: u64) -> Result<bool, RodioError> {
     with_player(id, |state| Ok(state.sink.empty()))
+}
+
+#[uniffi::export]
+pub fn player_get_position_ms(id: u64) -> Result<u64, RodioError> {
+    with_player(id, |state| Ok(duration_to_millis(state.sink.get_pos())))
+}
+
+#[uniffi::export]
+pub fn player_get_duration_ms(id: u64) -> Result<Option<u64>, RodioError> {
+    with_player(id, |state| Ok(state.current_duration.map(duration_to_millis)))
 }
 
 #[uniffi::export]

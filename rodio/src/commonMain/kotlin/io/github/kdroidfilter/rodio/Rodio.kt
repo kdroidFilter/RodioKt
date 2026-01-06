@@ -2,11 +2,10 @@ package io.github.kdroidfilter.rodio
 
 import io.github.kdroidfilter.rodio.native.createPlayer
 import io.github.kdroidfilter.rodio.native.destroyPlayer
-import io.github.kdroidfilter.rodio.native.httpAddRootCertPem
-import io.github.kdroidfilter.rodio.native.httpClearRootCerts
-import io.github.kdroidfilter.rodio.native.httpSetAllowInvalidCerts
 import io.github.kdroidfilter.rodio.native.playerClear
 import io.github.kdroidfilter.rodio.native.playerClearCallback
+import io.github.kdroidfilter.rodio.native.playerGetDurationMs
+import io.github.kdroidfilter.rodio.native.playerGetPositionMs
 import io.github.kdroidfilter.rodio.native.playerIsEmpty
 import io.github.kdroidfilter.rodio.native.playerIsPaused
 import io.github.kdroidfilter.rodio.native.playerPause
@@ -80,6 +79,10 @@ class RodioPlayer {
         playerClear(requireHandle())
     }
 
+    fun getPositionMs(): Long = playerGetPositionMs(requireHandle()).toLong()
+
+    fun getDurationMs(): Long? = playerGetDurationMs(requireHandle())?.toLong()
+
     fun setVolume(volume: Float) {
         playerSetVolume(requireHandle(), volume)
     }
@@ -107,16 +110,3 @@ class RodioPlayer {
     }
 }
 
-object RodioHttp {
-    fun setAllowInvalidCerts(allow: Boolean) {
-        httpSetAllowInvalidCerts(allow)
-    }
-
-    fun addRootCertPem(pem: String) {
-        httpAddRootCertPem(pem)
-    }
-
-    fun clearRootCerts() {
-        httpClearRootCerts()
-    }
-}
