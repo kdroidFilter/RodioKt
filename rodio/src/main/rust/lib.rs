@@ -8,6 +8,8 @@ use std::io::{self, BufReader, Cursor, Read, Seek, SeekFrom};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
+use hls_m3u8::tags::VariantStream;
+use hls_m3u8::{MasterPlaylist, MediaPlaylist};
 use reqwest::blocking::{Client, ClientBuilder, Response};
 use reqwest::header::{HeaderMap, CONTENT_TYPE, USER_AGENT};
 use reqwest::Certificate;
@@ -176,6 +178,272 @@ impl Seek for StreamReader {
     }
 }
 
+struct HlsStreamReader {
+    playlist_url: reqwest::Url,
+    cached_playlist: Option<MediaPlaylist<'static>>,
+    next_sequence: Option<usize>,
+    current_response: Option<Response>,
+    ended: bool,
+    pos: u64,
+}
+
+impl HlsStreamReader {
+    fn new(url: &str) -> Result<(Self, Option<String>, Option<Duration>), RodioError> {
+        let playlist_url =
+            reqwest::Url::parse(url).map_err(|_| RodioError::InvalidUrl(url.to_string()))?;
+        let (playlist, resolved_url) = fetch_hls_media_playlist(&playlist_url)?;
+        let hint_url = first_hls_segment_url(&resolved_url, &playlist);
+        let total_duration = hls_total_duration(&playlist);
+        Ok((
+            Self {
+                playlist_url: resolved_url,
+                cached_playlist: Some(playlist),
+                next_sequence: None,
+                current_response: None,
+                ended: false,
+                pos: 0,
+            },
+            hint_url,
+            total_duration,
+        ))
+    }
+
+    fn load_playlist(&mut self) -> Result<(), RodioError> {
+        let (playlist, playlist_url) = fetch_hls_media_playlist(&self.playlist_url)?;
+        self.playlist_url = playlist_url;
+        self.cached_playlist = Some(playlist);
+        Ok(())
+    }
+
+    fn next_segment_url(&mut self) -> Result<Option<reqwest::Url>, RodioError> {
+        loop {
+            if self.ended {
+                return Ok(None);
+            }
+            if self.cached_playlist.is_none() {
+                self.load_playlist()?;
+            }
+            let (segment_count, target_duration, has_end_list, media_sequence) = {
+                let playlist = self.cached_playlist.as_ref().ok_or_else(|| {
+                    RodioError::Internal("hls playlist missing after load".to_string())
+                })?;
+                (
+                    playlist.segments.values().count(),
+                    playlist.target_duration,
+                    playlist.has_end_list,
+                    playlist.media_sequence,
+                )
+            };
+            if segment_count == 0 {
+                if has_end_list {
+                    self.ended = true;
+                    return Ok(None);
+                }
+                self.cached_playlist = None;
+                std::thread::sleep(hls_refresh_delay(target_duration));
+                continue;
+            }
+
+            let mut next_sequence = self.next_sequence.unwrap_or(media_sequence);
+            if next_sequence < media_sequence {
+                next_sequence = media_sequence;
+                self.next_sequence = Some(next_sequence);
+            }
+
+            let index = next_sequence - media_sequence;
+            if index >= segment_count {
+                if has_end_list {
+                    self.ended = true;
+                    return Ok(None);
+                }
+                self.cached_playlist = None;
+                std::thread::sleep(hls_refresh_delay(target_duration));
+                continue;
+            }
+
+            let segment = self
+                .cached_playlist
+                .as_ref()
+                .ok_or_else(|| RodioError::Internal("hls playlist missing after load".to_string()))?
+                .segments
+                .values()
+                .nth(index)
+                .ok_or_else(|| RodioError::Internal("hls segment lookup failed".to_string()))?;
+            validate_hls_segment(segment)?;
+            self.next_sequence = Some(next_sequence + 1);
+            let url = resolve_hls_url(&self.playlist_url, segment.uri().as_ref())?;
+            return Ok(Some(url));
+        }
+    }
+}
+
+impl Read for HlsStreamReader {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        loop {
+            if let Some(response) = &mut self.current_response {
+                let read = response.read(buf)?;
+                if read > 0 {
+                    self.pos = self.pos.saturating_add(read as u64);
+                    return Ok(read);
+                }
+                self.current_response = None;
+            }
+
+            if self.ended {
+                return Ok(0);
+            }
+
+            let next_url = self
+                .next_segment_url()
+                .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+            match next_url {
+                Some(url) => {
+                    let response = request_stream(url.as_str(), false)
+                        .map_err(|err| io::Error::new(io::ErrorKind::Other, err.to_string()))?;
+                    self.current_response = Some(response);
+                }
+                None => {
+                    self.ended = true;
+                    return Ok(0);
+                }
+            }
+        }
+    }
+}
+
+impl Seek for HlsStreamReader {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match pos {
+            SeekFrom::Current(0) => Ok(self.pos),
+            _ => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "hls stream is not seekable",
+            )),
+        }
+    }
+}
+
+fn validate_hls_segment(segment: &hls_m3u8::MediaSegment<'_>) -> Result<(), RodioError> {
+    if segment.map.is_some() {
+        return Err(RodioError::Playlist(
+            "hls init segments are not supported".to_string(),
+        ));
+    }
+    if segment.byte_range.is_some() {
+        return Err(RodioError::Playlist(
+            "hls byte-range segments are not supported".to_string(),
+        ));
+    }
+    if segment.keys.iter().any(|key| key.is_some()) {
+        return Err(RodioError::Playlist(
+            "hls encrypted segments are not supported".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn hls_refresh_delay(target_duration: Duration) -> Duration {
+    let mut millis = target_duration.as_millis() as u64 / 2;
+    if millis < 500 {
+        millis = 500;
+    }
+    if millis > 2000 {
+        millis = 2000;
+    }
+    Duration::from_millis(millis)
+}
+
+fn hls_total_duration(playlist: &MediaPlaylist<'_>) -> Option<Duration> {
+    if !playlist.has_end_list {
+        return None;
+    }
+    let mut total = Duration::ZERO;
+    for segment in playlist.segments.values() {
+        total = total.saturating_add(segment.duration.duration());
+    }
+    Some(total)
+}
+
+fn first_hls_segment_url(
+    playlist_url: &reqwest::Url,
+    playlist: &MediaPlaylist<'_>,
+) -> Option<String> {
+    playlist
+        .segments
+        .values()
+        .next()
+        .and_then(|segment| resolve_hls_url(playlist_url, segment.uri().as_ref()).ok())
+        .map(|url| url.to_string())
+}
+
+fn parse_hls_media_playlist(body: &str) -> Result<MediaPlaylist<'static>, RodioError> {
+    MediaPlaylist::try_from(body)
+        .map(|playlist| playlist.into_owned())
+        .map_err(|err| RodioError::Playlist(format!("hls media playlist parse failed: {err}")))
+}
+
+fn resolve_hls_url(base_url: &reqwest::Url, candidate: &str) -> Result<reqwest::Url, RodioError> {
+    if let Ok(url) = reqwest::Url::parse(candidate) {
+        return Ok(url);
+    }
+    base_url
+        .join(candidate)
+        .map_err(|_| RodioError::InvalidUrl(candidate.to_string()))
+}
+
+fn select_hls_variant_url(
+    master: &MasterPlaylist<'_>,
+    base_url: &reqwest::Url,
+) -> Result<reqwest::Url, RodioError> {
+    let mut best: Option<(&VariantStream<'_>, u64)> = None;
+    for variant in &master.variant_streams {
+        let VariantStream::ExtXStreamInf { .. } = variant else {
+            continue;
+        };
+        let bandwidth = variant.bandwidth();
+        if best
+            .map(|(_, current)| bandwidth > current)
+            .unwrap_or(true)
+        {
+            best = Some((variant, bandwidth));
+        }
+    }
+    let variant = best
+        .map(|(variant, _)| variant)
+        .ok_or_else(|| {
+            RodioError::Playlist("hls master playlist has no stream variants".to_string())
+        })?;
+    let uri = match variant {
+        VariantStream::ExtXStreamInf { uri, .. } => uri.as_ref(),
+        VariantStream::ExtXIFrame { .. } => {
+            return Err(RodioError::Playlist(
+                "hls master playlist has no playable stream variants".to_string(),
+            ));
+        }
+    };
+    resolve_hls_url(base_url, uri)
+}
+
+fn fetch_hls_media_playlist(
+    url: &reqwest::Url,
+) -> Result<(MediaPlaylist<'static>, reqwest::Url), RodioError> {
+    let response = request_stream(url.as_str(), false)?;
+    let body = response.text()?;
+
+    if let Ok(media) = parse_hls_media_playlist(&body) {
+        return Ok((media, url.clone()));
+    }
+
+    let master = MasterPlaylist::try_from(body.as_str())
+        .map(|playlist| playlist.into_owned())
+        .map_err(|err| RodioError::Playlist(format!("hls master playlist parse failed: {err}")))?;
+    let variant_url = select_hls_variant_url(&master, url)?;
+    let response = request_stream(variant_url.as_str(), false)?;
+    let body = response.text()?;
+    let media = parse_hls_media_playlist(&body)?;
+    Ok((media, variant_url))
+}
+
 fn parse_icy_metadata_block(bytes: &[u8]) -> Vec<(String, String)> {
     let text = String::from_utf8_lossy(bytes);
     let trimmed = text.trim_matches('\0').trim();
@@ -289,6 +557,19 @@ fn download_bytes(url: &str) -> Result<Vec<u8>, RodioError> {
     Ok(bytes.to_vec())
 }
 
+fn is_hls_playlist(url: &str, content_type: Option<&str>) -> bool {
+    if url.to_lowercase().ends_with(".m3u8") {
+        return true;
+    }
+    if let Some(content_type) = content_type {
+        let content_type = content_type.to_lowercase();
+        return content_type.contains("vnd.apple.mpegurl")
+            || content_type.contains("application/x-mpegurl")
+            || content_type.contains("mpegurl");
+    }
+    false
+}
+
 fn is_playlist(url: &str, content_type: Option<&str>) -> bool {
     let url = url.to_lowercase();
     if url.ends_with(".m3u") || url.ends_with(".m3u8") || url.ends_with(".pls") {
@@ -347,6 +628,27 @@ fn build_stream_decoder(
         builder = builder.with_hint(hint);
     }
     Ok(builder.build()?)
+}
+
+fn build_hls_decoder(
+    reader: HlsStreamReader,
+    hint_url: Option<&str>,
+) -> Result<Decoder<HlsStreamReader>, RodioError> {
+    let mut builder = Decoder::builder().with_data(reader).with_seekable(false);
+    if let Some(hint) = hint_url.and_then(hint_from_url) {
+        builder = builder.with_hint(hint);
+    }
+    Ok(builder.build()?)
+}
+
+fn play_hls_stream(id: u64, url: &str) -> Result<(), RodioError> {
+    let (reader, hint_url, total_duration) = HlsStreamReader::new(url)?;
+    let decoder = build_hls_decoder(reader, hint_url.as_deref())?;
+    with_player_mut(id, |state| {
+        state.current_duration = total_duration;
+        state.sink.append(decoder);
+        Ok(())
+    })
 }
 
 #[uniffi::export]
@@ -437,32 +739,42 @@ pub fn player_play_sine(
 pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioError> {
     let callback = player_callback(id)?;
     notify_event(&callback, PlaybackEvent::Connecting);
-    let result = if looped {
-        (|| {
+    let result = (|| {
+        if looped {
+            if is_hls_playlist(&url, None) {
+                return Err(RodioError::Playlist(
+                    "hls looped playback is not supported".to_string(),
+                ));
+            }
             let bytes = download_bytes(&url)?;
             let cursor = Cursor::new(bytes);
             let decoder = Decoder::new_looped(cursor)?;
-            with_player_mut(id, |state| {
+            return with_player_mut(id, |state| {
                 state.current_duration = None;
                 state.sink.append(decoder);
                 Ok(())
-            })
-        })()
-    } else {
-        (|| {
-            let response = request_stream(&url, false)?;
-            let content_type = response_content_type(&response);
-            let meta_interval = icy_metaint(response.headers());
-            let reader = StreamReader::new(response, meta_interval, callback.clone());
-            let decoder = build_stream_decoder(reader, content_type.as_deref(), &url)?;
-            let duration = decoder.total_duration();
-            with_player_mut(id, |state| {
-                state.current_duration = duration;
-                state.sink.append(decoder);
-                Ok(())
-            })
-        })()
-    };
+            });
+        }
+
+        if is_hls_playlist(&url, None) {
+            return play_hls_stream(id, &url);
+        }
+
+        let response = request_stream(&url, false)?;
+        let content_type = response_content_type(&response);
+        if is_hls_playlist(&url, content_type.as_deref()) {
+            return play_hls_stream(id, &url);
+        }
+        let meta_interval = icy_metaint(response.headers());
+        let reader = StreamReader::new(response, meta_interval, callback.clone());
+        let decoder = build_stream_decoder(reader, content_type.as_deref(), &url)?;
+        let duration = decoder.total_duration();
+        with_player_mut(id, |state| {
+            state.current_duration = duration;
+            state.sink.append(decoder);
+            Ok(())
+        })
+    })();
     if let Err(error) = &result {
         notify_error(&callback, error);
     } else {
@@ -504,17 +816,31 @@ pub fn player_play_radio(id: u64, url: String) -> Result<(), RodioError> {
     let callback = player_callback(id)?;
     notify_event(&callback, PlaybackEvent::Connecting);
     let result = (|| {
+        if is_hls_playlist(&url, None) {
+            return play_hls_stream(id, &url);
+        }
+
         let mut response = request_stream(&url, true)?;
         let mut content_type = response_content_type(&response);
         let mut final_url = url.clone();
+
+        if is_hls_playlist(&final_url, content_type.as_deref()) {
+            return play_hls_stream(id, &final_url);
+        }
 
         if is_playlist(&url, content_type.as_deref()) {
             let body = response.text()?;
             let stream_url = resolve_playlist(&url, &body)
                 .ok_or_else(|| RodioError::Playlist("playlist did not contain a stream url".to_string()))?;
+            if is_hls_playlist(&stream_url, None) {
+                return play_hls_stream(id, &stream_url);
+            }
             response = request_stream(&stream_url, true)?;
             content_type = response_content_type(&response);
             final_url = stream_url;
+            if is_hls_playlist(&final_url, content_type.as_deref()) {
+                return play_hls_stream(id, &final_url);
+            }
         }
 
         if let Some(callback) = &callback {
