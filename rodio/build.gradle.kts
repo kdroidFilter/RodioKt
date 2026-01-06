@@ -5,7 +5,7 @@ import gobley.gradle.cargo.dsl.native
 import gobley.gradle.cargo.tasks.CargoBuildTask
 import gobley.gradle.cargo.tasks.FindDynamicLibrariesTask
 import gobley.gradle.cargo.tasks.RustUpTargetAddTask
-import gobley.gradle.rust.targets.RustAppleMobileTarget
+import gobley.gradle.rust.targets.RustTarget
 import org.gradle.api.Project
 import java.io.File
 
@@ -18,9 +18,26 @@ fun rustLibraryName(triple: String): String = when {
 fun Project.prebuiltRustLibrary(triple: String): File =
     layout.projectDirectory.dir("target/$triple/release").file(rustLibraryName(triple)).asFile
 
+fun Project.latestRustInputTimestamp(): Long {
+    val inputs = mutableListOf<File>()
+    inputs += file("Cargo.toml")
+    inputs += file("Cargo.lock")
+    inputs += file("uniffi.toml")
+    inputs += fileTree("src/main/rust") { include("**/*") }.files
+    return inputs
+        .filter { it.exists() }
+        .maxOfOrNull { it.lastModified() }
+        ?: 0L
+}
+
+fun Project.isPrebuiltRustLibraryFresh(triple: String): Boolean {
+    val prebuilt = prebuiltRustLibrary(triple)
+    if (!prebuilt.exists()) return false
+    return prebuilt.lastModified() >= latestRustInputTimestamp()
+}
+
 plugins {
     alias(libs.plugins.multiplatform)
-    alias(libs.plugins.android.library)
     alias(libs.plugins.maven.publish)
     alias(libs.plugins.kotlinAtomicfu)
     alias(libs.plugins.gobleyCargo)
@@ -60,11 +77,7 @@ uniffi {
 kotlin {
     jvmToolchain(17)
 
-    androidTarget { publishLibraryVariants("release") }
     jvm()
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
 
     sourceSets {
         commonMain.dependencies {
@@ -74,10 +87,6 @@ kotlin {
 
         commonTest.dependencies {
             implementation(kotlin("test"))
-        }
-
-        androidMain.dependencies {
-            implementation(libs.kotlinx.coroutines.android)
         }
 
         jvmMain.dependencies {
@@ -98,9 +107,8 @@ tasks.withType<CargoBuildTask>().configureEach {
     onlyIf {
         val rustTarget = target.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
-        val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-        !prebuiltLib.exists() || isHostTarget
+        !project.isPrebuiltRustLibraryFresh(triple) || isHostTarget
     }
 }
 
@@ -109,7 +117,7 @@ tasks.withType<FindDynamicLibrariesTask>().configureEach {
     val triple = rustTarget.rustTriple
     val prebuiltLib = project.prebuiltRustLibrary(triple)
     val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-    if (prebuiltLib.exists() && !isHostTarget) {
+    if (project.isPrebuiltRustLibraryFresh(triple) && !isHostTarget) {
         searchPaths.set(listOf(prebuiltLib.parentFile))
     }
 }
@@ -118,19 +126,8 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
     onlyIf {
         val rustTarget = rustTarget.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
-        val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-        !prebuiltLib.exists() || isHostTarget
-    }
-}
-
-android {
-    namespace = "io.github.kdroidfilter.rodio"
-    compileSdk = 35
-    ndkPath = "/Users/elie/android-sdk/ndk/26.1.10909125"
-
-    defaultConfig {
-        minSdk = 26
+        !project.isPrebuiltRustLibraryFresh(triple) || isHostTarget
     }
 }
 

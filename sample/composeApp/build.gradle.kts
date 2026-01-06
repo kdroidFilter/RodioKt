@@ -1,39 +1,23 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-
 plugins {
     alias(libs.plugins.multiplatform)
     alias(libs.plugins.compose.compiler)
     alias(libs.plugins.compose)
-    alias(libs.plugins.android.application)
 }
 
 kotlin {
     jvmToolchain(17)
 
-    androidTarget()
     jvm()
-    iosX64()
-    iosArm64()
-    iosSimulatorArm64()
-
-    targets.withType<KotlinNativeTarget>().configureEach {
-        binaries.framework {
-            baseName = "ComposeApp"
-            isStatic = true
-        }
-    }
 
     sourceSets {
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.ui)
             implementation(compose.foundation)
+            implementation(compose.material)
+            implementation(libs.kotlinx.coroutines.core)
             implementation(project(":rodio"))
-        }
-
-        androidMain.dependencies {
-            implementation(libs.androidx.activityCompose)
         }
 
         jvmMain.dependencies {
@@ -42,20 +26,6 @@ kotlin {
 
 
 
-    }
-}
-
-android {
-    namespace = "sample.app"
-    compileSdk = 35
-
-    defaultConfig {
-        minSdk = 26
-        targetSdk = 35
-
-        applicationId = "sample.app.androidApp"
-        versionCode = 1
-        versionName = "1.0.0"
     }
 }
 

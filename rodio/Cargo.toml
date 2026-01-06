@@ -11,12 +11,9 @@ path = "src/main/rust/lib.rs"
 
 [dependencies]
 rodio = "0.21.1"
+reqwest = { version = "0.12.28", default-features = false, features = ["blocking", "rustls-tls-native-roots", "rustls-tls-webpki-roots"] }
 thiserror = "2.0.11"
 uniffi = "0.29.4"
-
-[target.'cfg(target_os = "android")'.dependencies]
-jni = "0.21"
-ndk-context = "0.1"
 
 [profile.release]
 opt-level = "z"

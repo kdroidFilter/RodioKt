@@ -5,8 +5,8 @@ Kotlin Multiplatform Library
 ### Run Sample App
 
  - Desktop JVM: `./gradlew :sample:composeApp:run`
- - Android: `open project in Android Studio and run the sample app`
- - iOS: `open 'sample/iosApp/iosApp.xcodeproj' in Xcode and run the sample app`
+- If your network uses TLS inspection or a custom root CA, add that CA with `RodioHttp.addRootCertPem(...)`.
+  For quick debugging only, you can disable validation with `RodioHttp.setAllowInvalidCerts(true)`.
 
 ### Publish to MavenLocal
 
