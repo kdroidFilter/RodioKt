@@ -1,0 +1,47 @@
+
+# Gradle
+.gradle/
+**/build/
+
+# Local config
+local.properties
+
+# Kotlin
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Android
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+bin/
+gen/
+obj/
+.navigation/
+
+# Signing / secrets
+*.jks
+*.keystore
+*.gpg
+
+# Rust
+**/target/
+*.rs.bk
+
+# OS
+.DS_Store
+
+# iOS (KMP)
+xcuserdata/
+Pods/

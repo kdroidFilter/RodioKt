@@ -1,0 +1,2 @@
+package_name = "io.github.kdroidfilter.rodio.native"
+cdylib_name = "rodio_kt"

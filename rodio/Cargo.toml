@@ -1,0 +1,30 @@
+[package]
+name = "rodio-kt"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "rodio_kt"
+crate-type = ["cdylib", "staticlib"]
+path = "src/main/rust/lib.rs"
+
+[dependencies]
+rodio = "0.21.1"
+thiserror = "2.0.11"
+uniffi = "0.29.4"
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+ndk-context = "0.1"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+incremental = false
+
+[profile.dev]
+panic = "abort"
