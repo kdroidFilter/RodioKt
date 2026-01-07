@@ -152,22 +152,11 @@ tasks.withType<Jar>().configureEach {
 }
 
 configurations.named("jvmRuntimeElements").configure {
-    val nativeRuntimeJarTasks = listOf(
-        "jarJvmRustRuntimeMacOSArm64Release",
-        "jarJvmRustRuntimeMacOSX64Release",
-        "jarJvmRustRuntimeLinuxX64Release",
-        "jarJvmRustRuntimeLinuxArm64Release",
-        "jarJvmRustRuntimeMinGWX64Release",
-    )
-
-    nativeRuntimeJarTasks.forEach { taskName ->
-        val jarTask = tasks.named(taskName, Jar::class.java)
-        val isHostTask = hostRuntimeJarTaskName == taskName
-        val archiveFile = jarTask.get().archiveFile.get().asFile
-        if (!isHostTask && !archiveFile.exists()) return@forEach
-
+    // Attach any available runtime jar tasks (only the host one will be produced because of the onlyIf above).
+    tasks.withType(Jar::class.java).configureEach { jarTask ->
+        if (!jarTask.name.startsWith("jarJvmRustRuntime") || !jarTask.name.endsWith("Release")) return@configureEach
         outgoing.artifact(jarTask) {
-            jarTask.get().archiveClassifier.orNull?.let { classifier ->
+            jarTask.archiveClassifier.orNull?.let { classifier ->
                 if (classifier.isNotBlank()) {
                     this.classifier = classifier
                 }
