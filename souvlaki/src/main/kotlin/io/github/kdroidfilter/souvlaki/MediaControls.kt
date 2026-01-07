@@ -77,6 +77,9 @@ class MediaControls private constructor(
      * The callback will be invoked when the user interacts with the OS
      * media controls (e.g., play/pause buttons, seek slider, media keys).
      *
+     * **macOS note:** On macOS, this should be called from a background thread
+     * to avoid blocking the UI during initialization.
+     *
      * @param callback The callback to receive events
      */
     fun attach(callback: MediaControlCallback) {

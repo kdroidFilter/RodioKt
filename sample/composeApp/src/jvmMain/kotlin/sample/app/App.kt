@@ -241,34 +241,46 @@ fun App() {
                                     mediaControlsEnabled = false
                                     lastMediaEvent = null
                                 } else {
-                                    runCatching {
-                                        val controls = MediaControls.create(
-                                            dbusName = "rodiokt_sample",
-                                            displayName = "RodioKt Sample"
-                                        )
-                                        controls.attach { event ->
-                                            scope.launch {
-                                                lastMediaEvent = when (event.eventType) {
-                                                    MediaControlEventType.PLAY -> "Play"
-                                                    MediaControlEventType.PAUSE -> "Pause"
-                                                    MediaControlEventType.TOGGLE -> "Toggle"
-                                                    MediaControlEventType.NEXT -> "Next"
-                                                    MediaControlEventType.PREVIOUS -> "Previous"
-                                                    MediaControlEventType.STOP -> "Stop"
-                                                    MediaControlEventType.SEEK -> "Seek ${if (event.seekForward == true) "Forward" else "Backward"}"
-                                                    MediaControlEventType.SEEK_BY -> "SeekBy ${event.seekOffsetSecs}s"
-                                                    MediaControlEventType.SET_POSITION -> "SetPosition ${event.positionSecs}s"
-                                                    MediaControlEventType.SET_VOLUME -> "SetVolume ${event.volume}"
-                                                    MediaControlEventType.OPEN_URI -> "OpenUri ${event.uri}"
-                                                    MediaControlEventType.RAISE -> "Raise"
-                                                    MediaControlEventType.QUIT -> "Quit"
+                                    // Launch in IO dispatcher to avoid blocking UI on macOS
+                                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                        runCatching {
+                                            val controls = MediaControls.create(
+                                                dbusName = "rodiokt_sample",
+                                                displayName = "RodioKt Sample"
+                                            )
+                                            controls.attach { event ->
+                                                scope.launch {
+                                                    lastMediaEvent = when (event.eventType) {
+                                                        MediaControlEventType.PLAY -> "Play"
+                                                        MediaControlEventType.PAUSE -> "Pause"
+                                                        MediaControlEventType.TOGGLE -> "Toggle"
+                                                        MediaControlEventType.NEXT -> "Next"
+                                                        MediaControlEventType.PREVIOUS -> "Previous"
+                                                        MediaControlEventType.STOP -> "Stop"
+                                                        MediaControlEventType.SEEK -> "Seek ${if (event.seekForward == true) "Forward" else "Backward"}"
+                                                        MediaControlEventType.SEEK_BY -> "SeekBy ${event.seekOffsetSecs}s"
+                                                        MediaControlEventType.SET_POSITION -> "SetPosition ${event.positionSecs}s"
+                                                        MediaControlEventType.SET_VOLUME -> "SetVolume ${event.volume}"
+                                                        MediaControlEventType.OPEN_URI -> "OpenUri ${event.uri}"
+                                                        MediaControlEventType.RAISE -> "Raise"
+                                                        MediaControlEventType.QUIT -> "Quit"
+                                                    }
                                                 }
                                             }
+                                            // Set initial metadata and playback status
+                                            controls.setMetadata(
+                                                title = trackTitle,
+                                                artist = trackArtist,
+                                                album = trackAlbum,
+                                                durationSecs = 180.0
+                                            )
+                                            controls.setPlayback(PlaybackStatus.PAUSED)
+                                            currentPlaybackStatus = PlaybackStatus.PAUSED
+                                            mediaControlsInstance = controls
+                                            mediaControlsEnabled = true
+                                        }.onFailure {
+                                            println("Failed to create media controls: ${it.message}")
                                         }
-                                        mediaControlsInstance = controls
-                                        mediaControlsEnabled = true
-                                    }.onFailure {
-                                        println("Failed to create media controls: ${it.message}")
                                     }
                                 }
                             },

@@ -252,8 +252,11 @@ pub fn create_media_controls(_dbus_name: String, _display_name: String) -> Resul
         hwnd: None,
     };
 
-    let controls = MediaControls::new(config)
+    let mut controls = MediaControls::new(config)
         .map_err(|_| SouvlakiError::Creation("failed to create media controls".to_string()))?;
+
+    // Set initial playback state for controls to appear in Control Center
+    let _ = controls.set_playback(MediaPlayback::Playing { progress: None });
 
     let id = next_id();
     let state = ControlsState {
@@ -362,6 +365,10 @@ pub fn destroy_media_controls(id: u64) -> Result<(), SouvlakiError> {
 }
 
 /// Attach a callback to receive media control events.
+///
+/// On macOS, this performs an initialization cycle to ensure all buttons
+/// (Previous/Next) are properly enabled in Control Center. This should be
+/// called from a background thread to avoid blocking the UI.
 #[uniffi::export]
 pub fn media_controls_attach(
     id: u64,
@@ -371,6 +378,13 @@ pub fn media_controls_attach(
     let callback_clone = callback_arc.clone();
 
     with_controls_mut(id, |state| {
+        // On macOS, do a dummy attach/detach cycle first to initialize all buttons properly
+        #[cfg(target_os = "macos")]
+        {
+            let _ = state.controls.attach(|_| {});
+            let _ = state.controls.detach();
+        }
+
         state.callback = Some(callback_arc);
         state
             .controls

@@ -14,13 +14,13 @@ thiserror = "2.0.11"
 uniffi = "0.29.4"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
+souvlaki = { version = "0.8.3", default-features = false, features = ["use_zbus"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-souvlaki = "0.7"
+souvlaki = "0.8.3"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-souvlaki = "0.7"
+souvlaki = "0.8.3"
 
 [profile.release]
 opt-level = "z"
