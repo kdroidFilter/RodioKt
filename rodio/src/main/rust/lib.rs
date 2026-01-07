@@ -48,6 +48,11 @@ fn notify_error(callback: &Option<Arc<dyn PlaybackCallback>>, error: &RodioError
     }
 }
 
+fn reset_sink(state: &mut PlayerState) {
+    state.sink.clear();
+    state.sink.play();
+}
+
 #[derive(Clone, Default)]
 struct HttpOptions {
     allow_invalid_certs: bool,
@@ -664,6 +669,7 @@ fn play_hls_stream(id: u64, url: &str) -> Result<(), RodioError> {
     let (reader, hint_url, total_duration) = HlsStreamReader::new(url)?;
     let decoder = build_hls_decoder(reader, hint_url.as_deref())?;
     with_player_mut(id, |state| {
+        reset_sink(state);
         state.current_duration = total_duration;
         state.seekable = false;
         state.sink.append(decoder);
@@ -729,6 +735,7 @@ pub fn player_play_file(id: u64, path: String, looped: bool) -> Result<(), Rodio
                 .or_else(|| approximate_file_duration(&path))
         };
         with_player_mut(id, |state| {
+            reset_sink(state);
             state.current_duration = duration;
             state.seekable = seekable && !looped;
             if looped {
@@ -762,6 +769,7 @@ pub fn player_play_sine(
     let callback = player_callback(id)?;
     let duration = Duration::from_millis(duration_ms);
     let result = with_player_mut(id, |state| {
+        reset_sink(state);
         state.current_duration = Some(duration);
         state.seekable = false;
         let source = SineWave::new(frequency_hz)
@@ -792,6 +800,7 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
             let cursor = Cursor::new(bytes);
             let decoder = Decoder::new_looped(cursor)?;
             return with_player_mut(id, |state| {
+                reset_sink(state);
                 state.current_duration = None;
                 state.sink.append(decoder);
                 Ok(())
@@ -812,6 +821,7 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
         let decoder = build_stream_decoder(reader, content_type.as_deref(), &url)?;
         let duration = decoder.total_duration();
         with_player_mut(id, |state| {
+            reset_sink(state);
             state.current_duration = duration;
             state.seekable = false;
             state.sink.append(decoder);
@@ -904,6 +914,7 @@ pub fn player_play_radio(id: u64, url: String) -> Result<(), RodioError> {
         let decoder = build_stream_decoder(reader, content_type.as_deref(), &final_url)?;
         let duration = decoder.total_duration();
         with_player_mut(id, |state| {
+            reset_sink(state);
             state.current_duration = duration;
             state.seekable = false;
             state.sink.append(decoder);

@@ -252,6 +252,10 @@ fun App() {
             Row(horizontalArrangement = Arrangement.Center) {
                 Button(
                     onClick = {
+                        if (playbackEvent == PlaybackEvent.PAUSED) {
+                            player.play()
+                            return@Button
+                        }
                         when (activeTab) {
                             SourceTab.File -> if (filePath.isNotBlank()) {
                                 scope.launch {
