@@ -175,13 +175,8 @@ impl Read for StreamReader {
 
 impl Seek for StreamReader {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        match pos {
-            SeekFrom::Current(0) => Ok(self.pos),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "stream is not seekable",
-            )),
-        }
+        let _ = pos;
+        Ok(self.pos)
     }
 }
 
@@ -320,13 +315,8 @@ impl Read for HlsStreamReader {
 
 impl Seek for HlsStreamReader {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        match pos {
-            SeekFrom::Current(0) => Ok(self.pos),
-            _ => Err(io::Error::new(
-                io::ErrorKind::Unsupported,
-                "hls stream is not seekable",
-            )),
-        }
+        let _ = pos;
+        Ok(self.pos)
     }
 }
 
@@ -482,7 +472,25 @@ fn duration_to_millis(duration: Duration) -> u64 {
 fn approximate_file_duration(path: &str) -> Option<Duration> {
     // Fallback for formats that do not expose a duration in metadata.
     let file = File::open(path).ok()?;
-    let mut decoder = Decoder::try_from(BufReader::new(file)).ok()?;
+    let decoder = Decoder::try_from(BufReader::new(file)).ok()?;
+    let sample_rate = u64::from(decoder.sample_rate());
+    let channels = u64::from(decoder.channels());
+    if sample_rate == 0 || channels == 0 {
+        return None;
+    }
+    let total_samples = u64::try_from(decoder.count()).ok()?;
+    let frames = total_samples.checked_div(channels)?;
+    let seconds = frames as f64 / sample_rate as f64;
+    if seconds.is_finite() && seconds > 0.0 {
+        Some(Duration::from_secs_f64(seconds))
+    } else {
+        None
+    }
+}
+
+fn approximate_bytes_duration(bytes: &[u8]) -> Option<Duration> {
+    let cursor = Cursor::new(bytes.to_vec());
+    let decoder = Decoder::try_from(cursor).ok()?;
     let sample_rate = u64::from(decoder.sample_rate());
     let channels = u64::from(decoder.channels());
     if sample_rate == 0 || channels == 0 {
@@ -519,6 +527,44 @@ fn icy_metaint(headers: &HeaderMap) -> Option<usize> {
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
+}
+
+fn url_extension(url: &str) -> Option<String> {
+    reqwest::Url::parse(url)
+        .ok()
+        .and_then(|u| u.path_segments()?.last().map(|seg| seg.to_lowercase()))
+        .and_then(|seg| seg.rsplit('.').next().map(|ext| ext.to_string()))
+}
+
+fn is_seekable_http_format(url: &str, content_type: Option<&str>) -> bool {
+    if let Some(content_type) = content_type {
+        if content_type.contains("mpeg") || content_type.contains("mp3") {
+            return true;
+        }
+        if content_type.contains("aac") {
+            return true;
+        }
+        if content_type.contains("mp4") || content_type.contains("m4a") {
+            return true;
+        }
+        if content_type.contains("flac") {
+            return true;
+        }
+        if content_type.contains("ogg") || content_type.contains("opus") {
+            return true;
+        }
+        if content_type.contains("wav") || content_type.contains("wave") {
+            return true;
+        }
+        if content_type.contains("aiff") || content_type.contains("aif") {
+            return true;
+        }
+    }
+    match url_extension(url).as_deref() {
+        Some("mp3") | Some("aac") | Some("m4a") | Some("mp4") | Some("flac") | Some("ogg")
+        | Some("opus") | Some("wav") | Some("aiff") | Some("aif") => true,
+        _ => false,
+    }
 }
 
 fn hint_from_mime(mime: &str) -> Option<&'static str> {
@@ -674,7 +720,7 @@ fn play_seekable_http_bytes(
     content_type: Option<&str>,
 ) -> Result<(), RodioError> {
     let mut builder = Decoder::builder()
-        .with_data(Cursor::new(bytes))
+        .with_data(Cursor::new(bytes.clone()))
         .with_seekable(true);
     if let Some(content_type) = content_type {
         builder = builder.with_mime_type(content_type);
@@ -685,8 +731,11 @@ fn play_seekable_http_bytes(
     {
         builder = builder.with_hint(hint);
     }
-    let mut decoder = builder.build()?;
-    let duration = decoder.total_duration();
+    let decoder = builder.build()?;
+    let mut duration = decoder.total_duration();
+    if duration.is_none() {
+        duration = approximate_bytes_duration(&bytes);
+    }
     with_player_mut(id, |state| {
         reset_sink(state);
         state.current_duration = duration;
@@ -848,7 +897,10 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
             return play_hls_stream(id, &url);
         }
         if let Some(len) = response.content_length() {
-            if len > 0 && len <= MAX_SEEKABLE_HTTP_BYTES {
+            if len > 0
+                && len <= MAX_SEEKABLE_HTTP_BYTES
+                && is_seekable_http_format(&url, content_type.as_deref())
+            {
                 let bytes = response.bytes()?;
                 return play_seekable_http_bytes(id, &url, bytes.to_vec(), content_type.as_deref());
             }

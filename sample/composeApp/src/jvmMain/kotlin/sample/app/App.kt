@@ -59,6 +59,7 @@ fun App() {
     var durationMs by remember { mutableStateOf<Long?>(null) }
     var userSeekMs by remember { mutableStateOf<Long?>(null) }
     var seekable by remember { mutableStateOf(false) }
+    var volume by remember { mutableStateOf(1f) }
 
     val accentColor = Color(0xFF2563EB)
     val tabBackground = Color(0xFFEFF3FB)
@@ -201,6 +202,21 @@ fun App() {
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+
+            BasicText("Volume", style = TextStyle(color = Color.Black))
+            Spacer(modifier = Modifier.height(8.dp))
+            Slider(
+                value = volume,
+                onValueChange = { newVolume ->
+                    volume = newVolume
+                    runCatching { player.setVolume(newVolume.coerceIn(0f, 1f)) }
+                        .onFailure { println("Volume error: ${it.message}") }
+                },
+                valueRange = 0f..1f,
+                steps = 8,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(modifier = Modifier.height(12.dp))
 
             BasicText("Status: $statusLabel", style = TextStyle(color = Color.Black))
             Spacer(modifier = Modifier.height(8.dp))
