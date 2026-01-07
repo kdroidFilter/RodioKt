@@ -472,6 +472,25 @@ fn duration_to_millis(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
+fn approximate_file_duration(path: &str) -> Option<Duration> {
+    // Fallback for formats that do not expose a duration in metadata.
+    let file = File::open(path).ok()?;
+    let mut decoder = Decoder::try_from(BufReader::new(file)).ok()?;
+    let sample_rate = u64::from(decoder.sample_rate());
+    let channels = u64::from(decoder.channels());
+    if sample_rate == 0 || channels == 0 {
+        return None;
+    }
+    let total_samples = u64::try_from(decoder.count()).ok()?;
+    let frames = total_samples.checked_div(channels)?;
+    let seconds = frames as f64 / sample_rate as f64;
+    if seconds.is_finite() && seconds > 0.0 {
+        Some(Duration::from_secs_f64(seconds))
+    } else {
+        None
+    }
+}
+
 fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -691,11 +710,17 @@ pub fn player_clear_callback(id: u64) -> Result<(), RodioError> {
 pub fn player_play_file(id: u64, path: String, looped: bool) -> Result<(), RodioError> {
     let callback = player_callback(id)?;
     let result = (|| {
-        let file = File::open(path)?;
+        let file = File::open(&path)?;
         let decoder = Decoder::try_from(BufReader::new(file))?;
-        let duration = decoder.total_duration();
+        let duration = if looped {
+            None
+        } else {
+            decoder
+                .total_duration()
+                .or_else(|| approximate_file_duration(&path))
+        };
         with_player_mut(id, |state| {
-            state.current_duration = if looped { None } else { duration };
+            state.current_duration = duration;
             if looped {
                 state.sink.append(decoder.repeat_infinite());
             } else {
