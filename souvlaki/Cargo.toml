@@ -1,0 +1,34 @@
+[package]
+name = "souvlaki-kt"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "souvlaki_kt"
+crate-type = ["cdylib", "staticlib"]
+path = "src/main/rust/lib.rs"
+
+[dependencies]
+thiserror = "2.0.11"
+uniffi = "0.29.4"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+souvlaki = { version = "0.7", default-features = false, features = ["use_zbus"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+souvlaki = "0.7"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+souvlaki = "0.7"
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "debuginfo"
+incremental = false
+
+[profile.dev]
+panic = "abort"

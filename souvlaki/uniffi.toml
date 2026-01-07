@@ -1,0 +1,2 @@
+package_name = "io.github.kdroidfilter.souvlaki.native"
+cdylib_name = "souvlaki_kt"

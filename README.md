@@ -121,3 +121,131 @@ These options apply to every HTTP(S) request used by the player.
 - HLS is supported, but encrypted, byte-range, or init-segment-based streams are not.
 - Looping (`loop = true`) is not available for HLS.
 - One `RodioPlayer` per output device is recommended; reuse it and close it cleanly with `close()`.
+
+---
+
+# SouvlakiKt
+
+SouvlakiKt is a Kotlin JVM wrapper around the Rust `souvlaki` library. It provides cross-platform media controls integration, allowing your application to display metadata and respond to media keys/system controls.
+
+## Highlights ✨
+- **Cross-platform**: Works on Linux (D-Bus MPRIS), macOS (Now Playing), and Windows (SMTC).
+- Display track metadata (title, artist, album, artwork URL, duration) in OS media controls.
+- Receive events from media keys and system controls (play, pause, next, previous, seek, etc.).
+- Simple initialization pattern suitable for KMP (Kotlin Multiplatform) projects.
+
+## Installation 📦
+### From Maven Central
+```kotlin
+dependencies {
+    implementation("io.github.kdroidfilter:souvlaki:<version>")
+}
+```
+
+### From source
+- Build everything: `./gradlew :souvlaki:build`
+- Publish to your local Maven: `./gradlew :souvlaki:publishToMavenLocal`
+
+## Quick start 🚀
+
+### 1. Initialize (required on Windows)
+```kotlin
+import io.github.kdroidfilter.souvlaki.MediaControlsConfig
+
+// At application startup, pass your main window
+MediaControlsConfig.init(mainWindow)
+```
+
+### 2. Create and use MediaControls
+```kotlin
+import io.github.kdroidfilter.souvlaki.*
+
+val controls = MediaControls.create(
+    dbusName = "my_player",      // Linux only
+    displayName = "My Player"    // Linux only
+)
+
+// Set metadata
+controls.setMetadata(MediaMetadata(
+    title = "Song Title",
+    artist = "Artist Name",
+    album = "Album Name",
+    durationSecs = 180.0
+))
+
+// Set playback status
+controls.setPlayback(PlaybackStatus.PLAYING)
+
+// Listen for events
+controls.attach { event ->
+    when (event.eventType) {
+        MediaControlEventType.PLAY -> player.play()
+        MediaControlEventType.PAUSE -> player.pause()
+        MediaControlEventType.NEXT -> player.next()
+        MediaControlEventType.PREVIOUS -> player.previous()
+        MediaControlEventType.STOP -> player.stop()
+        MediaControlEventType.TOGGLE -> player.togglePlayPause()
+        MediaControlEventType.SEEK -> {
+            if (event.seekForward == true) player.seekForward()
+            else player.seekBackward()
+        }
+        MediaControlEventType.SET_POSITION -> {
+            event.positionSecs?.let { player.seekTo(it) }
+        }
+        else -> {}
+    }
+}
+
+// When done
+controls.close()
+```
+
+## Core API 🧭
+- **Initialization**
+  - `MediaControlsConfig.init(component: Component)` – Initialize with window (required on Windows)
+  - `MediaControlsConfig.init(windowHandle: Long)` – Initialize with raw HWND
+  - `MediaControlsConfig.reset()` – Reset configuration
+
+- **MediaControls**
+  - `MediaControls.create(dbusName, displayName)` – Create a new instance
+  - `setMetadata(MediaMetadata)` – Update displayed metadata
+  - `setPlayback(PlaybackStatus)` – Set playback status (Playing, Paused, Stopped)
+  - `setPlayback(status, progressSecs)` – Set status with progress
+  - `attach(callback)` / `attach { event -> }` – Listen for events
+  - `detach()` – Stop listening for events
+  - `close()` – Release resources
+
+- **MediaMetadata**
+  - `title`, `artist`, `album`, `coverUrl`, `durationSecs`
+
+- **Events** (`MediaControlEventType`)
+  - `PLAY`, `PAUSE`, `TOGGLE`, `STOP`
+  - `NEXT`, `PREVIOUS`
+  - `SEEK`, `SEEK_BY`, `SET_POSITION`
+  - `SET_VOLUME`, `OPEN_URI`, `RAISE`, `QUIT`
+
+## Platform notes 📋
+
+| Platform | Init Required | Backend | Notes |
+|----------|---------------|---------|-------|
+| **Linux** | No | D-Bus MPRIS | Test with `playerctl` or media keys |
+| **macOS** | No | MediaPlayer framework | Shows in Now Playing widget |
+| **Windows** | **Yes** | SMTC | Requires window handle (HWND) |
+
+### Testing on Linux
+```bash
+# List available players
+playerctl -l
+
+# Send commands
+playerctl -p my_player play
+playerctl -p my_player pause
+playerctl -p my_player next
+
+# View metadata
+playerctl -p my_player metadata
+```
+
+## Develop and test 🧪
+- Build the library: `./gradlew :souvlaki:build`
+- Run the sample app with Media Controls tab: `./gradlew :sample:composeApp:run`

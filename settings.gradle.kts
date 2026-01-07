@@ -29,5 +29,6 @@ dependencyResolutionManagement {
     }
 }
 include(":rodio")
+include(":souvlaki")
 include(":sample:composeApp")
 

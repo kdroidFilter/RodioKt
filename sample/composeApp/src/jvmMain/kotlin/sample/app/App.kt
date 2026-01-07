@@ -39,13 +39,19 @@ import androidx.compose.ui.unit.dp
 import io.github.kdroidfilter.rodio.RodioPlayer
 import io.github.kdroidfilter.rodio.native.PlaybackCallback
 import io.github.kdroidfilter.rodio.native.PlaybackEvent
+import io.github.kdroidfilter.souvlaki.MediaControls
+import io.github.kdroidfilter.souvlaki.MediaControlCallback
+import io.github.kdroidfilter.souvlaki.MediaControlEventData
+import io.github.kdroidfilter.souvlaki.MediaControlEventType
+import io.github.kdroidfilter.souvlaki.MediaMetadata
+import io.github.kdroidfilter.souvlaki.PlaybackStatus
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 
-private enum class SourceTab { File, Stream }
+private enum class SourceTab { File, Stream, MediaControls }
 
 @Composable
 fun App() {
@@ -60,6 +66,15 @@ fun App() {
     var userSeekMs by remember { mutableStateOf<Long?>(null) }
     var seekable by remember { mutableStateOf(false) }
     var volume by remember { mutableStateOf(1f) }
+
+    // Souvlaki Media Controls state
+    var mediaControlsInstance by remember { mutableStateOf<MediaControls?>(null) }
+    var mediaControlsEnabled by remember { mutableStateOf(false) }
+    var lastMediaEvent by remember { mutableStateOf<String?>(null) }
+    var trackTitle by remember { mutableStateOf("Sample Track") }
+    var trackArtist by remember { mutableStateOf("Sample Artist") }
+    var trackAlbum by remember { mutableStateOf("Sample Album") }
+    var currentPlaybackStatus by remember { mutableStateOf(PlaybackStatus.STOPPED) }
 
     val accentColor = Color(0xFF2563EB)
     val tabBackground = Color(0xFFEFF3FB)
@@ -89,6 +104,13 @@ fun App() {
         }
     }
 
+    // Cleanup media controls on dispose
+    DisposableEffect(Unit) {
+        onDispose {
+            mediaControlsInstance?.close()
+        }
+    }
+
     LaunchedEffect(player) {
         while (true) {
             positionMs = player.getPositionMs()
@@ -111,6 +133,7 @@ fun App() {
     val hasSource = when (activeTab) {
         SourceTab.File -> filePath.isNotBlank()
         SourceTab.Stream -> streamUrl.isNotBlank()
+        SourceTab.MediaControls -> true
     }
 
     Box(
@@ -156,7 +179,11 @@ fun App() {
                         unselectedContentColor = Color(0xFF6B7280),
                         text = {
                             Text(
-                                text = if (tab == SourceTab.File) "File" else "Stream",
+                                text = when (tab) {
+                                    SourceTab.File -> "File"
+                                    SourceTab.Stream -> "Stream"
+                                    SourceTab.MediaControls -> "Media Controls"
+                                },
                                 style = TextStyle(color = if (selected) accentColor else Color(0xFF6B7280)),
                             )
                         },
@@ -199,6 +226,170 @@ fun App() {
                             .background(Color(0xFFF2F2F2))
                             .padding(10.dp),
                     )
+                }
+                SourceTab.MediaControls -> {
+                    BasicText("Souvlaki Media Controls Test", style = TextStyle(color = Color.Black))
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Enable/Disable controls
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(
+                            onClick = {
+                                if (mediaControlsEnabled) {
+                                    mediaControlsInstance?.close()
+                                    mediaControlsInstance = null
+                                    mediaControlsEnabled = false
+                                    lastMediaEvent = null
+                                } else {
+                                    runCatching {
+                                        val controls = MediaControls.create(
+                                            dbusName = "rodiokt_sample",
+                                            displayName = "RodioKt Sample"
+                                        )
+                                        controls.attach { event ->
+                                            scope.launch {
+                                                lastMediaEvent = when (event.eventType) {
+                                                    MediaControlEventType.PLAY -> "Play"
+                                                    MediaControlEventType.PAUSE -> "Pause"
+                                                    MediaControlEventType.TOGGLE -> "Toggle"
+                                                    MediaControlEventType.NEXT -> "Next"
+                                                    MediaControlEventType.PREVIOUS -> "Previous"
+                                                    MediaControlEventType.STOP -> "Stop"
+                                                    MediaControlEventType.SEEK -> "Seek ${if (event.seekForward == true) "Forward" else "Backward"}"
+                                                    MediaControlEventType.SEEK_BY -> "SeekBy ${event.seekOffsetSecs}s"
+                                                    MediaControlEventType.SET_POSITION -> "SetPosition ${event.positionSecs}s"
+                                                    MediaControlEventType.SET_VOLUME -> "SetVolume ${event.volume}"
+                                                    MediaControlEventType.OPEN_URI -> "OpenUri ${event.uri}"
+                                                    MediaControlEventType.RAISE -> "Raise"
+                                                    MediaControlEventType.QUIT -> "Quit"
+                                                }
+                                            }
+                                        }
+                                        mediaControlsInstance = controls
+                                        mediaControlsEnabled = true
+                                    }.onFailure {
+                                        println("Failed to create media controls: ${it.message}")
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                backgroundColor = if (mediaControlsEnabled) Color(0xFF10B981) else accentColor
+                            ),
+                        ) {
+                            BasicText(if (mediaControlsEnabled) "Disable Controls" else "Enable Controls")
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (mediaControlsEnabled) {
+                        // Track metadata inputs
+                        BasicText("Track Title", style = TextStyle(color = Color.Gray))
+                        BasicTextField(
+                            value = trackTitle,
+                            onValueChange = { trackTitle = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = Color.Black),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF2F2F2))
+                                .padding(10.dp),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        BasicText("Artist", style = TextStyle(color = Color.Gray))
+                        BasicTextField(
+                            value = trackArtist,
+                            onValueChange = { trackArtist = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = Color.Black),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF2F2F2))
+                                .padding(10.dp),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        BasicText("Album", style = TextStyle(color = Color.Gray))
+                        BasicTextField(
+                            value = trackAlbum,
+                            onValueChange = { trackAlbum = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = Color.Black),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFF2F2F2))
+                                .padding(10.dp),
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Update metadata button
+                        Button(
+                            onClick = {
+                                mediaControlsInstance?.setMetadata(
+                                    MediaMetadata(
+                                        title = trackTitle.takeIf { it.isNotBlank() },
+                                        artist = trackArtist.takeIf { it.isNotBlank() },
+                                        album = trackAlbum.takeIf { it.isNotBlank() },
+                                        durationSecs = 180.0
+                                    )
+                                )
+                            },
+                        ) {
+                            BasicText("Update Metadata")
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Playback status buttons
+                        BasicText("Set Playback Status:", style = TextStyle(color = Color.Gray))
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = {
+                                    currentPlaybackStatus = PlaybackStatus.PLAYING
+                                    mediaControlsInstance?.setPlayback(PlaybackStatus.PLAYING)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = if (currentPlaybackStatus == PlaybackStatus.PLAYING) Color(0xFF10B981) else Color(0xFFEDEDED)
+                                ),
+                            ) {
+                                BasicText("Playing")
+                            }
+                            Button(
+                                onClick = {
+                                    currentPlaybackStatus = PlaybackStatus.PAUSED
+                                    mediaControlsInstance?.setPlayback(PlaybackStatus.PAUSED)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = if (currentPlaybackStatus == PlaybackStatus.PAUSED) Color(0xFFF59E0B) else Color(0xFFEDEDED)
+                                ),
+                            ) {
+                                BasicText("Paused")
+                            }
+                            Button(
+                                onClick = {
+                                    currentPlaybackStatus = PlaybackStatus.STOPPED
+                                    mediaControlsInstance?.setPlayback(PlaybackStatus.STOPPED)
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    backgroundColor = if (currentPlaybackStatus == PlaybackStatus.STOPPED) Color(0xFFEF4444) else Color(0xFFEDEDED)
+                                ),
+                            ) {
+                                BasicText("Stopped")
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Last received event
+                        BasicText(
+                            "Last Event: ${lastMediaEvent ?: "None"}",
+                            style = TextStyle(color = Color.DarkGray)
+                        )
+                    } else {
+                        BasicText(
+                            "Click 'Enable Controls' to start media controls.\nOn Linux, you can use playerctl or your DE's media keys to test.",
+                            style = TextStyle(color = Color.Gray)
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
@@ -285,6 +476,9 @@ fun App() {
                                     runCatching { player.playUrlAsync(streamUrl, loop = false) }
                                         .onFailure { println("Stream error: ${it.message}") }
                                 }
+                            }
+                            SourceTab.MediaControls -> {
+                                // MediaControls tab doesn't use rodio player
                             }
                         }
                     },
