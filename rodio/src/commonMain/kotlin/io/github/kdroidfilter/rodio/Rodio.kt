@@ -30,6 +30,10 @@ class RodioPlayer(
     /** Optional output buffer size in frames. Larger values raise latency but reduce underruns. */
     bufferSizeFrames: Int? = null,
 ) {
+    private companion object {
+        val playbackDispatcher = Dispatchers.Default
+    }
+
     private var handle: ULong = when {
         bufferSizeFrames == null -> createPlayer()
         bufferSizeFrames <= 0 -> throw IllegalArgumentException("bufferSizeFrames must be > 0")
@@ -46,13 +50,19 @@ class RodioPlayer(
         playerPlayFile(requireHandle(), path, loop)
     }
 
+    suspend fun playFileAsync(path: String, loop: Boolean) {
+        withContext(playbackDispatcher) {
+            playFile(path, loop)
+        }
+    }
+
     fun playUrl(url: String, loop: Boolean = false, callback: PlaybackCallback? = null) {
         if (callback != null) setCallback(callback)
         playerPlayUrl(requireHandle(), url, loop)
     }
 
     suspend fun playUrlAsync(url: String, loop: Boolean = false, callback: PlaybackCallback? = null) {
-        withContext(Dispatchers.Default) {
+        withContext(playbackDispatcher) {
             playUrl(url, loop, callback)
         }
     }
@@ -63,7 +73,7 @@ class RodioPlayer(
     }
 
     suspend fun playRadioAsync(url: String, callback: PlaybackCallback? = null) {
-        withContext(Dispatchers.Default) {
+        withContext(playbackDispatcher) {
             playRadio(url, callback)
         }
     }

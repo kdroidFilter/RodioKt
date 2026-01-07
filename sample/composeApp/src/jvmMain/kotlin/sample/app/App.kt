@@ -254,11 +254,14 @@ fun App() {
                     onClick = {
                         when (activeTab) {
                             SourceTab.File -> if (filePath.isNotBlank()) {
-                                player.playFile(filePath, loop = false)
+                                scope.launch {
+                                    runCatching { player.playFileAsync(filePath, loop = false) }
+                                        .onFailure { println("File error: ${it.message}") }
+                                }
                             }
                             SourceTab.Stream -> if (streamUrl.isNotBlank()) {
                                 scope.launch {
-                                    runCatching { player.playUrl(streamUrl, loop = false) }
+                                    runCatching { player.playUrlAsync(streamUrl, loop = false) }
                                         .onFailure { println("Stream error: ${it.message}") }
                                 }
                             }
