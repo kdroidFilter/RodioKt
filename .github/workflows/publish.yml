@@ -1,125 +1,172 @@
-name: Publish
+name: Publish to Maven Central
 
 on:
-  workflow_dispatch:
-  push:
-    tags:
-      - "v*"
-
-concurrency:
-  group: publish
-  cancel-in-progress: false
+  release:
+    types: [published]
 
 jobs:
-  build-native:
-    name: Build native jars (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - macos-15-intel
-          - windows-latest
+  build-rust-macos-aarch64:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install Linux audio dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Build Rust library
+        working-directory: rodio
+        run: cargo build --release --target aarch64-apple-darwin
 
-      - name: Make Gradle wrapper executable
-        if: runner.os != 'Windows'
-        run: chmod +x gradlew
-
-      - name: Build native jars
-        if: runner.os != 'Windows'
-        run: ./gradlew :rodio:assemble
-
-      - name: Build native jars (Windows)
-        if: runner.os == 'Windows'
-        run: .\\gradlew.bat :rodio:assemble
-
-      - name: Collect native jars
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/native-jars
-          shopt -s nullglob
-          for jar in rodio/build/libs/rodio-*.jar; do
-            case "$jar" in
-              *-sources.jar|*-javadoc.jar|*-jvm.jar|*-metadata.jar) continue ;;
-            esac
-            cp "$jar" build/native-jars/
-          done
-          if [ -z "$(ls -A build/native-jars)" ]; then
-            echo "No native jars found in rodio/build/libs" >&2
-            ls -la rodio/build/libs || true
-            exit 1
-          fi
-
-      - name: Upload native jars
+      - name: Upload native library
         uses: actions/upload-artifact@v4
         with:
-          name: native-jars-${{ matrix.os }}
-          path: build/native-jars/*.jar
-          if-no-files-found: error
+          name: native-darwin-aarch64
+          path: rodio/target/aarch64-apple-darwin/release/librodio_kt.dylib
+          retention-days: 1
 
-  publish:
-    name: Publish to Maven Central
-    needs: build-native
-    runs-on: ubuntu-latest
-    env:
-      ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
-      ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
-      ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
-      ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
-      ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+  build-rust-macos-x86_64:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install Linux audio dependencies
-        if: runner.os == 'Linux'
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust library
+        working-directory: rodio
+        run: cargo build --release --target x86_64-apple-darwin
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-darwin-x86_64
+          path: rodio/target/x86_64-apple-darwin/release/librodio_kt.dylib
+          retention-days: 1
+
+  build-rust-linux:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Rust
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Gradle
+      - name: Build Rust library
+        working-directory: rodio
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-linux-x86_64
+          path: rodio/target/x86_64-unknown-linux-gnu/release/librodio_kt.so
+          retention-days: 1
+
+  build-rust-windows:
+    if: startsWith(github.event.release.tag_name, 'v')
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Rust library
+        working-directory: rodio
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Upload native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-windows-x86_64
+          path: rodio/target/x86_64-pc-windows-msvc/release/rodio_kt.dll
+          retention-days: 1
+
+  publish:
+    if: startsWith(github.event.release.tag_name, 'v')
+    needs:
+      - build-rust-macos-aarch64
+      - build-rust-macos-x86_64
+      - build-rust-linux
+      - build-rust-windows
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION_NAME="${TAG#v}"
+          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
+          sed -i.bak "s/^VERSION_NAME=.*/VERSION_NAME=$VERSION_NAME/" gradle.properties
+          rm -f gradle.properties.bak
+
+      - name: Download macOS aarch64 native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-aarch64
+          path: rodio/target/aarch64-apple-darwin/release/
+
+      - name: Download macOS x86_64 native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-darwin-x86_64
+          path: rodio/target/x86_64-apple-darwin/release/
+
+      - name: Download Linux native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-x86_64
+          path: rodio/target/x86_64-unknown-linux-gnu/release/
+
+      - name: Download Windows native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-windows-x86_64
+          path: rodio/target/x86_64-pc-windows-msvc/release/
+
+      - name: Verify native libraries
+        run: |
+          echo "=== Native libraries downloaded ==="
+          ls -la rodio/target/aarch64-apple-darwin/release/
+          ls -la rodio/target/x86_64-apple-darwin/release/
+          ls -la rodio/target/x86_64-unknown-linux-gnu/release/
+          ls -la rodio/target/x86_64-pc-windows-msvc/release/
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Rust (for UniFFI bindgen)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Download native jars
-        uses: actions/download-artifact@v4
-        with:
-          pattern: native-jars-*
-          path: rodio/build/libs
-          merge-multiple: true
-
-      - name: Publish
+      - name: Publish to Maven Central
         run: ./gradlew :rodio:publishAndReleaseToMavenCentral --no-configuration-cache
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}

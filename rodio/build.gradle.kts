@@ -20,23 +20,6 @@ fun rustLibraryName(triple: String): String = when {
 fun Project.prebuiltRustLibrary(triple: String): File =
     layout.projectDirectory.dir("target/$triple/release").file(rustLibraryName(triple)).asFile
 
-fun Project.latestRustInputTimestamp(): Long {
-    val inputs = mutableListOf<File>()
-    inputs += file("Cargo.toml")
-    inputs += file("Cargo.lock")
-    inputs += file("uniffi.toml")
-    inputs += fileTree("src/main/rust") { include("**/*") }.files
-    return inputs
-        .filter { it.exists() }
-        .maxOfOrNull { it.lastModified() }
-        ?: 0L
-}
-
-fun Project.isPrebuiltRustLibraryFresh(triple: String): Boolean {
-    val prebuilt = prebuiltRustLibrary(triple)
-    if (!prebuilt.exists()) return false
-    return prebuilt.lastModified() >= latestRustInputTimestamp()
-}
 
 plugins {
     alias(libs.plugins.multiplatform)
@@ -109,8 +92,9 @@ tasks.withType<CargoBuildTask>().configureEach {
     onlyIf {
         val rustTarget = target.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
+        val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-        !project.isPrebuiltRustLibraryFresh(triple) || isHostTarget
+        !prebuiltLib.exists() || isHostTarget
     }
 }
 
@@ -119,7 +103,7 @@ tasks.withType<FindDynamicLibrariesTask>().configureEach {
     val triple = rustTarget.rustTriple
     val prebuiltLib = project.prebuiltRustLibrary(triple)
     val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-    if (project.isPrebuiltRustLibraryFresh(triple) && !isHostTarget) {
+    if (prebuiltLib.exists() && !isHostTarget) {
         searchPaths.set(listOf(prebuiltLib.parentFile))
     }
 }
@@ -128,12 +112,13 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
     onlyIf {
         val rustTarget = rustTarget.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
+        val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
-        !project.isPrebuiltRustLibraryFresh(triple) || isHostTarget
+        !prebuiltLib.exists() || isHostTarget
     }
 }
 
-val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget?.rustTriple) {
+val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget.rustTriple) {
     "aarch64-apple-darwin" -> "jarJvmRustRuntimeMacOSArm64Release"
     "x86_64-apple-darwin" -> "jarJvmRustRuntimeMacOSX64Release"
     "x86_64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxX64Release"
@@ -153,8 +138,9 @@ tasks.withType<Jar>().configureEach {
 
 configurations.named("jvmRuntimeElements").configure {
     // Attach any available runtime jar tasks (only the host one will be produced because of the onlyIf above).
-    tasks.withType(Jar::class.java).configureEach { jarTask ->
-        if (!jarTask.name.startsWith("jarJvmRustRuntime") || !jarTask.name.endsWith("Release")) return@configureEach
+    tasks.withType<Jar>().configureEach {
+        if (!name.startsWith("jarJvmRustRuntime") || !name.endsWith("Release")) return@configureEach
+        val jarTask = this
         outgoing.artifact(jarTask) {
             jarTask.archiveClassifier.orNull?.let { classifier ->
                 if (classifier.isNotBlank()) {
