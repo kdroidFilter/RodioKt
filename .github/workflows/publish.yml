@@ -154,14 +154,20 @@ jobs:
           ls -la rodio/src/jvmMain/resources/win32-x86-64/
           ls -la rodio/src/jvmMain/resources/win32-arm64/
 
-      - name: Create Gobley cache directories
+      - name: Create Gobley cache files
         run: |
-          # Create empty cache directories for non-host targets to prevent Gobley errors
-          mkdir -p rodio/build/taskOutputCache/cargoBuildMacOSX64Release/buildScriptOutputDirectories
-          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxX64Release/buildScriptOutputDirectories
-          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxArm64Release/buildScriptOutputDirectories
-          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWX64Release/buildScriptOutputDirectories
-          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWArm64Release/buildScriptOutputDirectories
+          # Create cache files pointing to prebuilt directories for non-host targets
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMacOSX64Release
+          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxX64Release
+          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxArm64Release
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWX64Release
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWArm64Release
+
+          echo "$PWD/rodio/target/x86_64-apple-darwin/release" > rodio/build/taskOutputCache/cargoBuildMacOSX64Release/buildScriptOutputDirectories
+          echo "$PWD/rodio/target/x86_64-unknown-linux-gnu/release" > rodio/build/taskOutputCache/cargoBuildLinuxX64Release/buildScriptOutputDirectories
+          echo "$PWD/rodio/target/aarch64-unknown-linux-gnu/release" > rodio/build/taskOutputCache/cargoBuildLinuxArm64Release/buildScriptOutputDirectories
+          echo "$PWD/rodio/target/x86_64-pc-windows-msvc/release" > rodio/build/taskOutputCache/cargoBuildMinGWX64Release/buildScriptOutputDirectories
+          echo "$PWD/rodio/target/aarch64-pc-windows-msvc/release" > rodio/build/taskOutputCache/cargoBuildMinGWArm64Release/buildScriptOutputDirectories
 
       - name: Set up JDK
         uses: actions/setup-java@v4
