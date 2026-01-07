@@ -310,15 +310,17 @@ pub fn create_media_controls(_dbus_name: String, _display_name: String) -> Resul
 #[cfg(target_os = "windows")]
 #[uniffi::export]
 pub fn create_media_controls_with_hwnd(hwnd: u64) -> Result<u64, SouvlakiError> {
-    use std::ptr::NonNull;
-
     let hwnd_ptr = hwnd as *mut std::ffi::c_void;
-    let hwnd_non_null = NonNull::new(hwnd_ptr);
+    let hwnd_opt = if hwnd_ptr.is_null() {
+        None
+    } else {
+        Some(hwnd_ptr)
+    };
 
     let config = PlatformConfig {
         dbus_name: "",
         display_name: "",
-        hwnd: hwnd_non_null,
+        hwnd: hwnd_opt,
     };
 
     let controls = MediaControls::new(config)
