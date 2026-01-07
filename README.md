@@ -1,6 +1,6 @@
 # RodioKt
 
-RodioKt is a Kotlin Multiplatform wrapper around the Rust `rodio` engine. It offers a compact API to play local files, HTTP(S)/HLS streams, internet radio (ICY), and to quickly generate a sine tone for testing.
+RodioKt is a Kotlin JVM wrapper around the Rust `rodio` engine. It offers a compact API to play local files, HTTP(S)/HLS streams, internet radio (ICY), and to quickly generate a sine tone for testing.
 
 ## Highlights ✨
 - Play local files, direct URLs, HLS streams, and internet radio (with ICY metadata).
