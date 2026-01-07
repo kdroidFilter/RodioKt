@@ -206,8 +206,9 @@ fun App() {
             Spacer(modifier = Modifier.height(8.dp))
             val totalDuration = durationMs
             val durationLabel = totalDuration?.let { formatTime(it) } ?: "--:--"
+            val canSeek = seekable && totalDuration != null && totalDuration > 0
             if (hasSource && playbackEvent != PlaybackEvent.STOPPED) {
-                if (activeTab == SourceTab.File && seekable && totalDuration != null && totalDuration > 0) {
+                if (canSeek) {
                     val safeDuration = totalDuration
                     val sliderValue = displayPositionMs
                         .coerceIn(0, safeDuration)

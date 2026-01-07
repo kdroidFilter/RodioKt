@@ -21,6 +21,8 @@ use rodio::Source;
 pub use error::RodioError;
 use state::{register, unregister, with_player, with_player_mut, PlayerState};
 
+const MAX_SEEKABLE_HTTP_BYTES: u64 = 25 * 1024 * 1024; // 25MB cap to avoid buffering huge streams
+
 #[derive(Clone, Copy, Debug, uniffi::Enum)]
 pub enum PlaybackEvent {
     Connecting,
@@ -665,6 +667,35 @@ fn build_hls_decoder(
     Ok(builder.build()?)
 }
 
+fn play_seekable_http_bytes(
+    id: u64,
+    url: &str,
+    bytes: Vec<u8>,
+    content_type: Option<&str>,
+) -> Result<(), RodioError> {
+    let mut builder = Decoder::builder()
+        .with_data(Cursor::new(bytes))
+        .with_seekable(true);
+    if let Some(content_type) = content_type {
+        builder = builder.with_mime_type(content_type);
+    }
+    if let Some(hint) = content_type
+        .and_then(hint_from_mime)
+        .or_else(|| hint_from_url(url))
+    {
+        builder = builder.with_hint(hint);
+    }
+    let mut decoder = builder.build()?;
+    let duration = decoder.total_duration();
+    with_player_mut(id, |state| {
+        reset_sink(state);
+        state.current_duration = duration;
+        state.seekable = true;
+        state.sink.append(decoder);
+        Ok(())
+    })
+}
+
 fn play_hls_stream(id: u64, url: &str) -> Result<(), RodioError> {
     let (reader, hint_url, total_duration) = HlsStreamReader::new(url)?;
     let decoder = build_hls_decoder(reader, hint_url.as_deref())?;
@@ -815,6 +846,12 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
         let content_type = response_content_type(&response);
         if is_hls_playlist(&url, content_type.as_deref()) {
             return play_hls_stream(id, &url);
+        }
+        if let Some(len) = response.content_length() {
+            if len > 0 && len <= MAX_SEEKABLE_HTTP_BYTES {
+                let bytes = response.bytes()?;
+                return play_seekable_http_bytes(id, &url, bytes.to_vec(), content_type.as_deref());
+            }
         }
         let meta_interval = icy_metaint(response.headers());
         let reader = StreamReader::new(response, meta_interval, callback.clone());
