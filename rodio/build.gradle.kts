@@ -142,11 +142,23 @@ val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget.rustTriple) {
     else -> null
 }
 
+// Map jar task names to rust triples for prebuilt detection
+val jarTaskToTriple = mapOf(
+    "jarJvmRustRuntimeMacOSArm64Release" to "aarch64-apple-darwin",
+    "jarJvmRustRuntimeMacOSX64Release" to "x86_64-apple-darwin",
+    "jarJvmRustRuntimeLinuxX64Release" to "x86_64-unknown-linux-gnu",
+    "jarJvmRustRuntimeLinuxArm64Release" to "aarch64-unknown-linux-gnu",
+    "jarJvmRustRuntimeMinGWX64Release" to "x86_64-pc-windows-msvc",
+    "jarJvmRustRuntimeMinGWArm64Release" to "aarch64-pc-windows-msvc"
+)
+
 tasks.withType<Jar>().configureEach {
     if (name.startsWith("jarJvmRustRuntime")) {
         onlyIf {
             val isHostTarget = hostRuntimeJarTaskName == name
-            isHostTarget
+            val triple = jarTaskToTriple[name]
+            val hasPrebuilt = triple?.let { project.prebuiltRustLibrary(it).exists() } ?: false
+            isHostTarget || hasPrebuilt
         }
     }
 }
