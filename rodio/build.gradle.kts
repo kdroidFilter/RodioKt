@@ -20,6 +20,16 @@ fun rustLibraryName(triple: String): String = when {
 fun Project.prebuiltRustLibrary(triple: String): File =
     layout.projectDirectory.dir("target/$triple/release").file(rustLibraryName(triple)).asFile
 
+// Only these targets are built in CI - skip others to avoid cross-compilation errors
+val supportedTargets = setOf(
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc"
+)
+
 
 plugins {
     alias(libs.plugins.multiplatform)
@@ -92,6 +102,8 @@ tasks.withType<CargoBuildTask>().configureEach {
     onlyIf {
         val rustTarget = target.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
+        // Skip unsupported targets entirely
+        if (triple !in supportedTargets) return@onlyIf false
         val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
         !prebuiltLib.exists() || isHostTarget
@@ -112,6 +124,8 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
     onlyIf {
         val rustTarget = rustTarget.orNull ?: return@onlyIf true
         val triple = rustTarget.rustTriple
+        // Skip unsupported targets entirely
+        if (triple !in supportedTargets) return@onlyIf false
         val prebuiltLib = project.prebuiltRustLibrary(triple)
         val isHostTarget = GobleyHost.current.rustTarget.rustTriple == triple
         !prebuiltLib.exists() || isHostTarget
@@ -124,6 +138,7 @@ val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget.rustTriple) {
     "x86_64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxX64Release"
     "aarch64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxArm64Release"
     "x86_64-pc-windows-msvc" -> "jarJvmRustRuntimeMinGWX64Release"
+    "aarch64-pc-windows-msvc" -> "jarJvmRustRuntimeMinGWArm64Release"
     else -> null
 }
 

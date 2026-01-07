@@ -5,56 +5,44 @@ on:
     types: [published]
 
 jobs:
-  build-rust-macos-aarch64:
+  build-src:
     if: startsWith(github.event.release.tag_name, 'v')
-    runs-on: macos-latest
+    name: Build native (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: native-darwin-aarch64
+            lib: librodio_kt.dylib
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: native-darwin-x86_64
+            lib: librodio_kt.dylib
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: native-linux-x86_64
+            lib: librodio_kt.so
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact: native-linux-aarch64
+            lib: librodio_kt.so
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: native-windows-x86_64
+            lib: rodio_kt.dll
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            artifact: native-windows-aarch64
+            lib: rodio_kt.dll
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Rust library
-        working-directory: rodio
-        run: cargo build --release --target aarch64-apple-darwin
-
-      - name: Upload native library
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-darwin-aarch64
-          path: rodio/target/aarch64-apple-darwin/release/librodio_kt.dylib
-          retention-days: 1
-
-  build-rust-macos-x86_64:
-    if: startsWith(github.event.release.tag_name, 'v')
-    runs-on: macos-15-intel
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Rust library
-        working-directory: rodio
-        run: cargo build --release --target x86_64-apple-darwin
-
-      - name: Upload native library
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-darwin-x86_64
-          path: rodio/target/x86_64-apple-darwin/release/librodio_kt.dylib
-          retention-days: 1
-
-  build-rust-linux:
-    if: startsWith(github.event.release.tag_name, 'v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
+      - name: Install Linux audio dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libasound2-dev pkg-config
@@ -64,50 +52,24 @@ jobs:
 
       - name: Build Rust library
         working-directory: rodio
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+        run: cargo build --release --target ${{ matrix.target }}
 
       - name: Upload native library
         uses: actions/upload-artifact@v4
         with:
-          name: native-linux-x86_64
-          path: rodio/target/x86_64-unknown-linux-gnu/release/librodio_kt.so
-          retention-days: 1
-
-  build-rust-windows:
-    if: startsWith(github.event.release.tag_name, 'v')
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Build Rust library
-        working-directory: rodio
-        run: cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Upload native library
-        uses: actions/upload-artifact@v4
-        with:
-          name: native-windows-x86_64
-          path: rodio/target/x86_64-pc-windows-msvc/release/rodio_kt.dll
+          name: ${{ matrix.artifact }}
+          path: rodio/target/${{ matrix.target }}/release/${{ matrix.lib }}
           retention-days: 1
 
   publish:
     if: startsWith(github.event.release.tag_name, 'v')
-    needs:
-      - build-rust-macos-aarch64
-      - build-rust-macos-x86_64
-      - build-rust-linux
-      - build-rust-windows
+    needs: build-src
     runs-on: macos-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set version from tag
-        shell: bash
         run: |
           TAG="${{ github.event.release.tag_name }}"
           VERSION_NAME="${TAG#v}"
@@ -127,17 +89,29 @@ jobs:
           name: native-darwin-x86_64
           path: rodio/target/x86_64-apple-darwin/release/
 
-      - name: Download Linux native library
+      - name: Download Linux x86_64 native library
         uses: actions/download-artifact@v4
         with:
           name: native-linux-x86_64
           path: rodio/target/x86_64-unknown-linux-gnu/release/
 
-      - name: Download Windows native library
+      - name: Download Linux aarch64 native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-linux-aarch64
+          path: rodio/target/aarch64-unknown-linux-gnu/release/
+
+      - name: Download Windows x86_64 native library
         uses: actions/download-artifact@v4
         with:
           name: native-windows-x86_64
           path: rodio/target/x86_64-pc-windows-msvc/release/
+
+      - name: Download Windows aarch64 native library
+        uses: actions/download-artifact@v4
+        with:
+          name: native-windows-aarch64
+          path: rodio/target/aarch64-pc-windows-msvc/release/
 
       - name: Verify native libraries
         run: |
@@ -145,7 +119,40 @@ jobs:
           ls -la rodio/target/aarch64-apple-darwin/release/
           ls -la rodio/target/x86_64-apple-darwin/release/
           ls -la rodio/target/x86_64-unknown-linux-gnu/release/
+          ls -la rodio/target/aarch64-unknown-linux-gnu/release/
           ls -la rodio/target/x86_64-pc-windows-msvc/release/
+          ls -la rodio/target/aarch64-pc-windows-msvc/release/
+
+      - name: Prepare JVM native resources
+        run: |
+          mkdir -p rodio/src/jvmMain/resources/darwin-aarch64
+          mkdir -p rodio/src/jvmMain/resources/darwin-x86-64
+          mkdir -p rodio/src/jvmMain/resources/linux-x86-64
+          mkdir -p rodio/src/jvmMain/resources/linux-arm64
+          mkdir -p rodio/src/jvmMain/resources/win32-x86-64
+          mkdir -p rodio/src/jvmMain/resources/win32-arm64
+          cp rodio/target/aarch64-apple-darwin/release/librodio_kt.dylib \
+            rodio/src/jvmMain/resources/darwin-aarch64/
+          cp rodio/target/x86_64-apple-darwin/release/librodio_kt.dylib \
+            rodio/src/jvmMain/resources/darwin-x86-64/
+          cp rodio/target/x86_64-unknown-linux-gnu/release/librodio_kt.so \
+            rodio/src/jvmMain/resources/linux-x86-64/
+          cp rodio/target/aarch64-unknown-linux-gnu/release/librodio_kt.so \
+            rodio/src/jvmMain/resources/linux-arm64/
+          cp rodio/target/x86_64-pc-windows-msvc/release/rodio_kt.dll \
+            rodio/src/jvmMain/resources/win32-x86-64/
+          cp rodio/target/aarch64-pc-windows-msvc/release/rodio_kt.dll \
+            rodio/src/jvmMain/resources/win32-arm64/
+
+      - name: Verify JVM resources
+        run: |
+          echo "=== JVM native resources ==="
+          ls -la rodio/src/jvmMain/resources/darwin-aarch64/
+          ls -la rodio/src/jvmMain/resources/darwin-x86-64/
+          ls -la rodio/src/jvmMain/resources/linux-x86-64/
+          ls -la rodio/src/jvmMain/resources/linux-arm64/
+          ls -la rodio/src/jvmMain/resources/win32-x86-64/
+          ls -la rodio/src/jvmMain/resources/win32-arm64/
 
       - name: Set up JDK
         uses: actions/setup-java@v4
