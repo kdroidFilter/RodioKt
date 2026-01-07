@@ -35,6 +35,8 @@ compose.desktop {
         mainClass = "MainKt"
 
         nativeDistributions {
+            modules("jdk.accessibility")
+
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "sample"
             packageVersion = "1.0.0"
