@@ -15,6 +15,8 @@ import io.github.kdroidfilter.rodio.native.playerPlayFile
 import io.github.kdroidfilter.rodio.native.playerPlayRadio
 import io.github.kdroidfilter.rodio.native.playerPlaySine
 import io.github.kdroidfilter.rodio.native.playerPlayUrl
+import io.github.kdroidfilter.rodio.native.playerIsSeekable
+import io.github.kdroidfilter.rodio.native.playerSeekPositionMs
 import io.github.kdroidfilter.rodio.native.playerSetCallback
 import io.github.kdroidfilter.rodio.native.playerSetVolume
 import io.github.kdroidfilter.rodio.native.playerStop
@@ -90,6 +92,13 @@ class RodioPlayer(
     fun getPositionMs(): Long = playerGetPositionMs(requireHandle()).toLong()
 
     fun getDurationMs(): Long? = playerGetDurationMs(requireHandle())?.toLong()
+
+    fun seekToMs(positionMs: Long) {
+        require(positionMs >= 0) { "positionMs must be >= 0" }
+        playerSeekPositionMs(requireHandle(), positionMs.toULong())
+    }
+
+    fun isSeekable(): Boolean = playerIsSeekable(requireHandle())
 
     fun setVolume(volume: Float) {
         playerSetVolume(requireHandle(), volume)

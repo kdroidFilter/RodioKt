@@ -15,6 +15,7 @@ pub struct PlayerState {
     pub sink: Sink,
     pub callback: Option<Arc<dyn PlaybackCallback>>,
     pub current_duration: Option<Duration>,
+    pub seekable: bool,
 }
 
 impl PlayerState {
@@ -42,6 +43,7 @@ impl PlayerState {
                 sink,
                 callback: None,
                 current_duration: None,
+                seekable: false,
             },
             stream,
         )

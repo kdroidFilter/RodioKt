@@ -665,6 +665,7 @@ fn play_hls_stream(id: u64, url: &str) -> Result<(), RodioError> {
     let decoder = build_hls_decoder(reader, hint_url.as_deref())?;
     with_player_mut(id, |state| {
         state.current_duration = total_duration;
+        state.seekable = false;
         state.sink.append(decoder);
         Ok(())
     })
@@ -711,7 +712,15 @@ pub fn player_play_file(id: u64, path: String, looped: bool) -> Result<(), Rodio
     let callback = player_callback(id)?;
     let result = (|| {
         let file = File::open(&path)?;
-        let decoder = Decoder::try_from(BufReader::new(file))?;
+        let len = file.metadata()?.len();
+        let mut builder = Decoder::builder()
+            .with_data(file)
+            .with_byte_len(len);
+        if let Some(hint) = hint_from_url(&path) {
+            builder = builder.with_hint(hint);
+        }
+        let mut decoder = builder.build()?;
+        let seekable = decoder.try_seek(Duration::from_millis(0)).is_ok();
         let duration = if looped {
             None
         } else {
@@ -721,6 +730,7 @@ pub fn player_play_file(id: u64, path: String, looped: bool) -> Result<(), Rodio
         };
         with_player_mut(id, |state| {
             state.current_duration = duration;
+            state.seekable = seekable && !looped;
             if looped {
                 state.sink.append(decoder.repeat_infinite());
             } else {
@@ -753,6 +763,7 @@ pub fn player_play_sine(
     let duration = Duration::from_millis(duration_ms);
     let result = with_player_mut(id, |state| {
         state.current_duration = Some(duration);
+        state.seekable = false;
         let source = SineWave::new(frequency_hz)
             .take_duration(duration);
         state.sink.append(source);
@@ -802,6 +813,7 @@ pub fn player_play_url(id: u64, url: String, looped: bool) -> Result<(), RodioEr
         let duration = decoder.total_duration();
         with_player_mut(id, |state| {
             state.current_duration = duration;
+            state.seekable = false;
             state.sink.append(decoder);
             Ok(())
         })
@@ -893,6 +905,7 @@ pub fn player_play_radio(id: u64, url: String) -> Result<(), RodioError> {
         let duration = decoder.total_duration();
         with_player_mut(id, |state| {
             state.current_duration = duration;
+            state.seekable = false;
             state.sink.append(decoder);
             Ok(())
         })
@@ -929,6 +942,7 @@ pub fn player_pause(id: u64) -> Result<(), RodioError> {
 pub fn player_stop(id: u64) -> Result<(), RodioError> {
     let callback = with_player_mut(id, |state| {
         state.current_duration = None;
+        state.seekable = false;
         state.sink.stop();
         Ok(state.callback.clone())
     })?;
@@ -940,6 +954,7 @@ pub fn player_stop(id: u64) -> Result<(), RodioError> {
 pub fn player_clear(id: u64) -> Result<(), RodioError> {
     let callback = with_player_mut(id, |state| {
         state.current_duration = None;
+        state.seekable = false;
         state.sink.clear();
         Ok(state.callback.clone())
     })?;
@@ -963,8 +978,29 @@ pub fn player_get_position_ms(id: u64) -> Result<u64, RodioError> {
 }
 
 #[uniffi::export]
+pub fn player_seek_position_ms(id: u64, position_ms: u64) -> Result<(), RodioError> {
+    let target = Duration::from_millis(position_ms);
+    with_player_mut(id, |state| {
+        let duration = state
+            .current_duration
+            .ok_or_else(|| RodioError::Seek("duration unknown or not seekable".to_string()))?;
+        let clamped = if target > duration { duration } else { target };
+        if !state.seekable {
+            return Err(RodioError::Seek("source is not seekable".to_string()));
+        }
+        state.sink.try_seek(clamped)?;
+        Ok(())
+    })
+}
+
+#[uniffi::export]
 pub fn player_get_duration_ms(id: u64) -> Result<Option<u64>, RodioError> {
     with_player(id, |state| Ok(state.current_duration.map(duration_to_millis)))
+}
+
+#[uniffi::export]
+pub fn player_is_seekable(id: u64) -> Result<bool, RodioError> {
+    with_player(id, |state| Ok(state.seekable))
 }
 
 #[uniffi::export]

@@ -41,6 +41,9 @@ pub enum RodioError {
     #[error("playlist error: {0}")]
     Playlist(String),
 
+    #[error("seek error: {0}")]
+    Seek(String),
+
     #[error("internal error: {0}")]
     Internal(String),
 }
@@ -54,6 +57,12 @@ impl From<std::io::Error> for RodioError {
 impl From<rodio::decoder::DecoderError> for RodioError {
     fn from(error: rodio::decoder::DecoderError) -> Self {
         RodioError::Decoder(error.to_string())
+    }
+}
+
+impl From<rodio::source::SeekError> for RodioError {
+    fn from(error: rodio::source::SeekError) -> Self {
+        RodioError::Seek(error.to_string())
     }
 }
 
