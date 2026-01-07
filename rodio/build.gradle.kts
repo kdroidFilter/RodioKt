@@ -1,4 +1,5 @@
-import com.vanniktech.maven.publish.KotlinMultiplatform
+import com.vanniktech.maven.publish.JavaLibrary
+import com.vanniktech.maven.publish.JavadocJar
 import gobley.gradle.GobleyHost
 import gobley.gradle.Variant
 import gobley.gradle.cargo.dsl.jvm
@@ -6,9 +7,8 @@ import gobley.gradle.cargo.tasks.CargoBuildTask
 import gobley.gradle.cargo.tasks.FindDynamicLibrariesTask
 import gobley.gradle.cargo.tasks.RustUpTargetAddTask
 import org.gradle.api.Project
-import org.gradle.api.publish.maven.MavenArtifact
 import org.gradle.api.publish.maven.MavenPublication
-import org.gradle.jvm.tasks.Jar
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.io.File
 
 fun rustLibraryName(triple: String): String = when {
@@ -30,14 +30,13 @@ val supportedTargets = setOf(
     "aarch64-pc-windows-msvc"
 )
 
-
 plugins {
-    alias(libs.plugins.multiplatform)
-    alias(libs.plugins.maven.publish)
+    alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.kotlinAtomicfu)
     alias(libs.plugins.gobleyCargo)
     alias(libs.plugins.gobleyRust)
     alias(libs.plugins.gobleyUniffi)
+    alias(libs.plugins.maven.publish)
 }
 
 cargo {
@@ -63,39 +62,31 @@ rust {
 uniffi {
     generateFromLibrary {
         build.set(GobleyHost.current.rustTarget)
-//        build.set(RustAppleMobileTarget.IosX64)
-//        build.set(RustAppleMobileTarget.IosArm64)
-//        build.set(RustAppleMobileTarget.IosSimulatorArm64)
     }
 }
 
 kotlin {
     jvmToolchain(17)
+}
 
-    jvm()
-
-    sourceSets {
-        commonMain.dependencies {
-            implementation(libs.kotlinx.coroutines.core)
-            implementation(libs.kotlinx.coroutines.test)
-        }
-
-        commonTest.dependencies {
-            implementation(kotlin("test"))
-        }
-
-        jvmMain.dependencies {
-            implementation(libs.kotlinx.coroutines.swing)
-            implementation(libs.jna)
-        }
-
-        jvmMain {
-            resources.srcDir("src/jvmMain/resources")
-        }
-
-
+sourceSets {
+    main {
+        resources.srcDir("src/main/resources")
     }
+}
 
+dependencies {
+    implementation(libs.jna)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.swing)
+    testImplementation(kotlin("test"))
+    testImplementation(libs.kotlinx.coroutines.test)
+}
+
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile>().configureEach {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
 
 tasks.withType<CargoBuildTask>().configureEach {
@@ -132,92 +123,40 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
     }
 }
 
-val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget.rustTriple) {
-    "aarch64-apple-darwin" -> "jarJvmRustRuntimeMacOSArm64Release"
-    "x86_64-apple-darwin" -> "jarJvmRustRuntimeMacOSX64Release"
-    "x86_64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxX64Release"
-    "aarch64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxArm64Release"
-    "x86_64-pc-windows-msvc" -> "jarJvmRustRuntimeMinGWX64Release"
-    "aarch64-pc-windows-msvc" -> "jarJvmRustRuntimeMinGWArm64Release"
-    else -> null
-}
-
-// Map jar task names to rust triples for prebuilt detection
-val jarTaskToTriple = mapOf(
-    "jarJvmRustRuntimeMacOSArm64Release" to "aarch64-apple-darwin",
-    "jarJvmRustRuntimeMacOSX64Release" to "x86_64-apple-darwin",
-    "jarJvmRustRuntimeLinuxX64Release" to "x86_64-unknown-linux-gnu",
-    "jarJvmRustRuntimeLinuxArm64Release" to "aarch64-unknown-linux-gnu",
-    "jarJvmRustRuntimeMinGWX64Release" to "x86_64-pc-windows-msvc",
-    "jarJvmRustRuntimeMinGWArm64Release" to "aarch64-pc-windows-msvc"
-)
-
-tasks.withType<Jar>().configureEach {
-    if (name.startsWith("jarJvmRustRuntime")) {
-        onlyIf {
-            val isHostTarget = hostRuntimeJarTaskName == name
-            val triple = jarTaskToTriple[name]
-            val hasPrebuilt = triple?.let { project.prebuiltRustLibrary(it).exists() } ?: false
-            isHostTarget || hasPrebuilt
-        }
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
     }
 }
 
-configurations.named("jvmRuntimeElements").configure {
-    // Attach any available runtime jar tasks (only the host one will be produced because of the onlyIf above).
-    tasks.withType<Jar>().configureEach {
-        if (!name.startsWith("jarJvmRustRuntime") || !name.endsWith("Release")) return@configureEach
-        val jarTask = this
-        outgoing.artifact(jarTask) {
-            jarTask.archiveClassifier.orNull?.let { classifier ->
-                if (classifier.isNotBlank()) {
-                    this.classifier = classifier
-                }
-            }
-        }
-    }
-}
-
-//Publishing your Kotlin Multiplatform library to Maven Central
-//https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-publish-libraries.html
 mavenPublishing {
-    configure(KotlinMultiplatform(sourcesJar = true))
+    configure(JavaLibrary(javadocJar = JavadocJar.Empty(), sourcesJar = true))
     publishToMavenCentral()
-    if (project.findProperty("signingInMemoryKey") != null || project.findProperty("signing.keyId") != null) {
+    if (project.findProperty("signingInMemoryKey") != null) {
         signAllPublications()
     }
     coordinates(artifactId = "rodio")
-
     pom {
         name.set("RodioKt")
-        description.set("Kotlin Multiplatform library")
+        description.set("Kotlin audio playback library powered by Rust Rodio")
     }
 }
 
-publishing {
-    publications.withType(MavenPublication::class.java).configureEach publication@{
-        if (name == "jvm") {
-            // Remove duplicate artifacts that share the same extension and classifier.
-            afterEvaluate {
-                val seen = mutableSetOf<Pair<String?, String?>>()
-                val artifactSet = this@publication.artifacts
-                val duplicates = mutableListOf<MavenArtifact>()
-                artifactSet.forEach { artifact ->
-                    val key = artifact.classifier to artifact.extension
-                    if (!seen.add(key)) {
-                        duplicates.add(artifact)
+// Publish native runtime JARs as additional artifacts
+afterEvaluate {
+    publishing {
+        publications.withType<MavenPublication>().configureEach {
+            if (name == "maven") {
+                // Add native runtime JARs for each platform
+                val nativeJars = layout.buildDirectory.dir("libs").get().asFile.listFiles()
+                    ?.filter { it.name.startsWith("rodio-") && it.name.endsWith(".jar") && !it.name.contains("sources") && !it.name.contains("javadoc") }
+                    ?: emptyList()
+
+                nativeJars.forEach { jar ->
+                    val classifier = jar.name.removePrefix("rodio-").removeSuffix(".jar")
+                    artifact(jar) {
+                        this.classifier = classifier
                     }
-                }
-                artifactSet.removeAll(duplicates.toSet())
-
-                val hasMainJar = artifactSet.any { it.extension == "jar" && it.classifier.isNullOrBlank() }
-                if (!hasMainJar) {
-                    artifact(tasks.named("jvmJar"))
-                }
-
-                val hasSourcesJar = artifactSet.any { it.extension == "jar" && it.classifier == "sources" }
-                if (!hasSourcesJar) {
-                    artifact(tasks.named("jvmSourcesJar"))
                 }
             }
         }

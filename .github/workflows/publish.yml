@@ -125,34 +125,34 @@ jobs:
 
       - name: Prepare JVM native resources
         run: |
-          mkdir -p rodio/src/jvmMain/resources/darwin-aarch64
-          mkdir -p rodio/src/jvmMain/resources/darwin-x86-64
-          mkdir -p rodio/src/jvmMain/resources/linux-x86-64
-          mkdir -p rodio/src/jvmMain/resources/linux-arm64
-          mkdir -p rodio/src/jvmMain/resources/win32-x86-64
-          mkdir -p rodio/src/jvmMain/resources/win32-arm64
+          mkdir -p rodio/src/main/resources/darwin-aarch64
+          mkdir -p rodio/src/main/resources/darwin-x86-64
+          mkdir -p rodio/src/main/resources/linux-x86-64
+          mkdir -p rodio/src/main/resources/linux-arm64
+          mkdir -p rodio/src/main/resources/win32-x86-64
+          mkdir -p rodio/src/main/resources/win32-arm64
           cp rodio/target/aarch64-apple-darwin/release/librodio_kt.dylib \
-            rodio/src/jvmMain/resources/darwin-aarch64/
+            rodio/src/main/resources/darwin-aarch64/
           cp rodio/target/x86_64-apple-darwin/release/librodio_kt.dylib \
-            rodio/src/jvmMain/resources/darwin-x86-64/
+            rodio/src/main/resources/darwin-x86-64/
           cp rodio/target/x86_64-unknown-linux-gnu/release/librodio_kt.so \
-            rodio/src/jvmMain/resources/linux-x86-64/
+            rodio/src/main/resources/linux-x86-64/
           cp rodio/target/aarch64-unknown-linux-gnu/release/librodio_kt.so \
-            rodio/src/jvmMain/resources/linux-arm64/
+            rodio/src/main/resources/linux-arm64/
           cp rodio/target/x86_64-pc-windows-msvc/release/rodio_kt.dll \
-            rodio/src/jvmMain/resources/win32-x86-64/
+            rodio/src/main/resources/win32-x86-64/
           cp rodio/target/aarch64-pc-windows-msvc/release/rodio_kt.dll \
-            rodio/src/jvmMain/resources/win32-arm64/
+            rodio/src/main/resources/win32-arm64/
 
       - name: Verify JVM resources
         run: |
           echo "=== JVM native resources ==="
-          ls -la rodio/src/jvmMain/resources/darwin-aarch64/
-          ls -la rodio/src/jvmMain/resources/darwin-x86-64/
-          ls -la rodio/src/jvmMain/resources/linux-x86-64/
-          ls -la rodio/src/jvmMain/resources/linux-arm64/
-          ls -la rodio/src/jvmMain/resources/win32-x86-64/
-          ls -la rodio/src/jvmMain/resources/win32-arm64/
+          ls -la rodio/src/main/resources/darwin-aarch64/
+          ls -la rodio/src/main/resources/darwin-x86-64/
+          ls -la rodio/src/main/resources/linux-x86-64/
+          ls -la rodio/src/main/resources/linux-arm64/
+          ls -la rodio/src/main/resources/win32-x86-64/
+          ls -la rodio/src/main/resources/win32-arm64/
 
       - name: Create Gobley cache files
         run: |
