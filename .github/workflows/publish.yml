@@ -17,7 +17,7 @@ jobs:
             target: aarch64-apple-darwin
             artifact: native-darwin-aarch64
             lib: librodio_kt.dylib
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact: native-darwin-x86_64
             lib: librodio_kt.dylib
