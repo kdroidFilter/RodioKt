@@ -2,12 +2,13 @@ import com.vanniktech.maven.publish.KotlinMultiplatform
 import gobley.gradle.GobleyHost
 import gobley.gradle.Variant
 import gobley.gradle.cargo.dsl.jvm
-import gobley.gradle.cargo.dsl.native
 import gobley.gradle.cargo.tasks.CargoBuildTask
 import gobley.gradle.cargo.tasks.FindDynamicLibrariesTask
 import gobley.gradle.cargo.tasks.RustUpTargetAddTask
-import gobley.gradle.rust.targets.RustTarget
 import org.gradle.api.Project
+import org.gradle.api.publish.maven.MavenArtifact
+import org.gradle.api.publish.maven.MavenPublication
+import org.gradle.jvm.tasks.Jar
 import java.io.File
 
 fun rustLibraryName(triple: String): String = when {
@@ -132,6 +133,49 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
     }
 }
 
+val hostRuntimeJarTaskName = when (GobleyHost.current.rustTarget?.rustTriple) {
+    "aarch64-apple-darwin" -> "jarJvmRustRuntimeMacOSArm64Release"
+    "x86_64-apple-darwin" -> "jarJvmRustRuntimeMacOSX64Release"
+    "x86_64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxX64Release"
+    "aarch64-unknown-linux-gnu" -> "jarJvmRustRuntimeLinuxArm64Release"
+    "x86_64-pc-windows-msvc" -> "jarJvmRustRuntimeMinGWX64Release"
+    else -> null
+}
+
+tasks.withType<Jar>().configureEach {
+    if (name.startsWith("jarJvmRustRuntime")) {
+        onlyIf {
+            val isHostTarget = hostRuntimeJarTaskName == name
+            isHostTarget
+        }
+    }
+}
+
+configurations.named("jvmRuntimeElements").configure {
+    val nativeRuntimeJarTasks = listOf(
+        "jarJvmRustRuntimeMacOSArm64Release",
+        "jarJvmRustRuntimeMacOSX64Release",
+        "jarJvmRustRuntimeLinuxX64Release",
+        "jarJvmRustRuntimeLinuxArm64Release",
+        "jarJvmRustRuntimeMinGWX64Release",
+    )
+
+    nativeRuntimeJarTasks.forEach { taskName ->
+        val jarTask = tasks.named(taskName, Jar::class.java)
+        val isHostTask = hostRuntimeJarTaskName == taskName
+        val archiveFile = jarTask.get().archiveFile.get().asFile
+        if (!isHostTask && !archiveFile.exists()) return@forEach
+
+        outgoing.artifact(jarTask) {
+            jarTask.get().archiveClassifier.orNull?.let { classifier ->
+                if (classifier.isNotBlank()) {
+                    this.classifier = classifier
+                }
+            }
+        }
+    }
+}
+
 //Publishing your Kotlin Multiplatform library to Maven Central
 //https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-publish-libraries.html
 mavenPublishing {
@@ -148,30 +192,30 @@ mavenPublishing {
     }
 }
 
-// Publish native runtime JARs as additional artifacts (same as wrywebview workflow).
-afterEvaluate {
-    publishing {
-        publications.withType<MavenPublication>().configureEach {
-            val isJvmPublication = name == "maven" ||
-                name.contains("jvm", ignoreCase = true) ||
-                artifactId.endsWith("-jvm")
-            if (!isJvmPublication) return@configureEach
-
-            val nativeJars = layout.buildDirectory.dir("libs").get().asFile.listFiles()
-                ?.filter {
-                    it.name.startsWith("rodio-") &&
-                        it.name.endsWith(".jar") &&
-                        !it.name.contains("sources") &&
-                        !it.name.contains("javadoc")
-                }
-                ?: emptyList()
-
-            nativeJars.forEach { jar ->
-                val classifier = jar.name.removePrefix("rodio-").removeSuffix(".jar")
-                if (classifier != "jvm") {
-                    artifact(jar) {
-                        this.classifier = classifier
+publishing {
+    publications.withType(MavenPublication::class.java).configureEach publication@{
+        if (name == "jvm") {
+            // Remove duplicate artifacts that share the same extension and classifier.
+            afterEvaluate {
+                val seen = mutableSetOf<Pair<String?, String?>>()
+                val artifactSet = this@publication.artifacts
+                val duplicates = mutableListOf<MavenArtifact>()
+                artifactSet.forEach { artifact ->
+                    val key = artifact.classifier to artifact.extension
+                    if (!seen.add(key)) {
+                        duplicates.add(artifact)
                     }
+                }
+                artifactSet.removeAll(duplicates.toSet())
+
+                val hasMainJar = artifactSet.any { it.extension == "jar" && it.classifier.isNullOrBlank() }
+                if (!hasMainJar) {
+                    artifact(tasks.named("jvmJar"))
+                }
+
+                val hasSourcesJar = artifactSet.any { it.extension == "jar" && it.classifier == "sources" }
+                if (!hasSourcesJar) {
+                    artifact(tasks.named("jvmSourcesJar"))
                 }
             }
         }

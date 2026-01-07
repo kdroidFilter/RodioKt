@@ -63,7 +63,7 @@ jobs:
           shopt -s nullglob
           for jar in rodio/build/libs/rodio-*.jar; do
             case "$jar" in
-              *-sources.jar|*-javadoc.jar|*-jvm.jar) continue ;;
+              *-sources.jar|*-javadoc.jar|*-jvm.jar|*-metadata.jar) continue ;;
             esac
             cp "$jar" build/native-jars/
           done
