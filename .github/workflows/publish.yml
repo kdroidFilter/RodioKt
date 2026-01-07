@@ -15,28 +15,40 @@ jobs:
         include:
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: native-darwin-aarch64
-            lib: librodio_kt.dylib
+            rodio_artifact: rodio-native-darwin-aarch64
+            rodio_lib: librodio_kt.dylib
+            souvlaki_artifact: souvlaki-native-darwin-aarch64
+            souvlaki_lib: libsouvlaki_kt.dylib
           - os: macos-15-intel
             target: x86_64-apple-darwin
-            artifact: native-darwin-x86_64
-            lib: librodio_kt.dylib
+            rodio_artifact: rodio-native-darwin-x86_64
+            rodio_lib: librodio_kt.dylib
+            souvlaki_artifact: souvlaki-native-darwin-x86_64
+            souvlaki_lib: libsouvlaki_kt.dylib
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: native-linux-x86_64
-            lib: librodio_kt.so
+            rodio_artifact: rodio-native-linux-x86_64
+            rodio_lib: librodio_kt.so
+            souvlaki_artifact: souvlaki-native-linux-x86_64
+            souvlaki_lib: libsouvlaki_kt.so
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
-            artifact: native-linux-aarch64
-            lib: librodio_kt.so
+            rodio_artifact: rodio-native-linux-aarch64
+            rodio_lib: librodio_kt.so
+            souvlaki_artifact: souvlaki-native-linux-aarch64
+            souvlaki_lib: libsouvlaki_kt.so
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: native-windows-x86_64
-            lib: rodio_kt.dll
+            rodio_artifact: rodio-native-windows-x86_64
+            rodio_lib: rodio_kt.dll
+            souvlaki_artifact: souvlaki-native-windows-x86_64
+            souvlaki_lib: souvlaki_kt.dll
           - os: windows-11-arm
             target: aarch64-pc-windows-msvc
-            artifact: native-windows-aarch64
-            lib: rodio_kt.dll
+            rodio_artifact: rodio-native-windows-aarch64
+            rodio_lib: rodio_kt.dll
+            souvlaki_artifact: souvlaki-native-windows-aarch64
+            souvlaki_lib: souvlaki_kt.dll
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -50,15 +62,26 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Build Rust library
+      - name: Build Rodio library
         working-directory: rodio
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Upload native library
+      - name: Build Souvlaki library
+        working-directory: souvlaki
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Upload Rodio native library
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: rodio/target/${{ matrix.target }}/release/${{ matrix.lib }}
+          name: ${{ matrix.rodio_artifact }}
+          path: rodio/target/${{ matrix.target }}/release/${{ matrix.rodio_lib }}
+          retention-days: 1
+
+      - name: Upload Souvlaki native library
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.souvlaki_artifact }}
+          path: souvlaki/target/${{ matrix.target }}/release/${{ matrix.souvlaki_lib }}
           retention-days: 1
 
   publish:
@@ -80,38 +103,74 @@ jobs:
       - name: Download macOS aarch64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-darwin-aarch64
+          name: rodio-native-darwin-aarch64
           path: rodio/target/aarch64-apple-darwin/release/
 
       - name: Download macOS x86_64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-darwin-x86_64
+          name: rodio-native-darwin-x86_64
           path: rodio/target/x86_64-apple-darwin/release/
 
       - name: Download Linux x86_64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-linux-x86_64
+          name: rodio-native-linux-x86_64
           path: rodio/target/x86_64-unknown-linux-gnu/release/
 
       - name: Download Linux aarch64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-linux-aarch64
+          name: rodio-native-linux-aarch64
           path: rodio/target/aarch64-unknown-linux-gnu/release/
 
       - name: Download Windows x86_64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-windows-x86_64
+          name: rodio-native-windows-x86_64
           path: rodio/target/x86_64-pc-windows-msvc/release/
 
       - name: Download Windows aarch64 native library
         uses: actions/download-artifact@v4
         with:
-          name: native-windows-aarch64
+          name: rodio-native-windows-aarch64
           path: rodio/target/aarch64-pc-windows-msvc/release/
+
+      - name: Download macOS aarch64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-darwin-aarch64
+          path: souvlaki/target/aarch64-apple-darwin/release/
+
+      - name: Download macOS x86_64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-darwin-x86_64
+          path: souvlaki/target/x86_64-apple-darwin/release/
+
+      - name: Download Linux x86_64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-linux-x86_64
+          path: souvlaki/target/x86_64-unknown-linux-gnu/release/
+
+      - name: Download Linux aarch64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-linux-aarch64
+          path: souvlaki/target/aarch64-unknown-linux-gnu/release/
+
+      - name: Download Windows x86_64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-windows-x86_64
+          path: souvlaki/target/x86_64-pc-windows-msvc/release/
+
+      - name: Download Windows aarch64 Souvlaki native library
+        uses: actions/download-artifact@v4
+        with:
+          name: souvlaki-native-windows-aarch64
+          path: souvlaki/target/aarch64-pc-windows-msvc/release/
 
       - name: Verify native libraries
         run: |
@@ -122,6 +181,12 @@ jobs:
           ls -la rodio/target/aarch64-unknown-linux-gnu/release/
           ls -la rodio/target/x86_64-pc-windows-msvc/release/
           ls -la rodio/target/aarch64-pc-windows-msvc/release/
+          ls -la souvlaki/target/aarch64-apple-darwin/release/
+          ls -la souvlaki/target/x86_64-apple-darwin/release/
+          ls -la souvlaki/target/x86_64-unknown-linux-gnu/release/
+          ls -la souvlaki/target/aarch64-unknown-linux-gnu/release/
+          ls -la souvlaki/target/x86_64-pc-windows-msvc/release/
+          ls -la souvlaki/target/aarch64-pc-windows-msvc/release/
 
       - name: Prepare JVM native resources
         run: |
@@ -143,6 +208,24 @@ jobs:
             rodio/src/main/resources/win32-x86-64/
           cp rodio/target/aarch64-pc-windows-msvc/release/rodio_kt.dll \
             rodio/src/main/resources/win32-arm64/
+          mkdir -p souvlaki/src/main/resources/darwin-aarch64
+          mkdir -p souvlaki/src/main/resources/darwin-x86-64
+          mkdir -p souvlaki/src/main/resources/linux-x86-64
+          mkdir -p souvlaki/src/main/resources/linux-arm64
+          mkdir -p souvlaki/src/main/resources/win32-x86-64
+          mkdir -p souvlaki/src/main/resources/win32-arm64
+          cp souvlaki/target/aarch64-apple-darwin/release/libsouvlaki_kt.dylib \
+            souvlaki/src/main/resources/darwin-aarch64/
+          cp souvlaki/target/x86_64-apple-darwin/release/libsouvlaki_kt.dylib \
+            souvlaki/src/main/resources/darwin-x86-64/
+          cp souvlaki/target/x86_64-unknown-linux-gnu/release/libsouvlaki_kt.so \
+            souvlaki/src/main/resources/linux-x86-64/
+          cp souvlaki/target/aarch64-unknown-linux-gnu/release/libsouvlaki_kt.so \
+            souvlaki/src/main/resources/linux-arm64/
+          cp souvlaki/target/x86_64-pc-windows-msvc/release/souvlaki_kt.dll \
+            souvlaki/src/main/resources/win32-x86-64/
+          cp souvlaki/target/aarch64-pc-windows-msvc/release/souvlaki_kt.dll \
+            souvlaki/src/main/resources/win32-arm64/
 
       - name: Verify JVM resources
         run: |
@@ -153,6 +236,12 @@ jobs:
           ls -la rodio/src/main/resources/linux-arm64/
           ls -la rodio/src/main/resources/win32-x86-64/
           ls -la rodio/src/main/resources/win32-arm64/
+          ls -la souvlaki/src/main/resources/darwin-aarch64/
+          ls -la souvlaki/src/main/resources/darwin-x86-64/
+          ls -la souvlaki/src/main/resources/linux-x86-64/
+          ls -la souvlaki/src/main/resources/linux-arm64/
+          ls -la souvlaki/src/main/resources/win32-x86-64/
+          ls -la souvlaki/src/main/resources/win32-arm64/
 
       - name: Create Gobley cache files
         run: |
@@ -168,6 +257,17 @@ jobs:
           echo "$PWD/rodio/target/aarch64-unknown-linux-gnu/release" > rodio/build/taskOutputCache/cargoBuildLinuxArm64Release/buildScriptOutputDirectories
           echo "$PWD/rodio/target/x86_64-pc-windows-msvc/release" > rodio/build/taskOutputCache/cargoBuildMinGWX64Release/buildScriptOutputDirectories
           echo "$PWD/rodio/target/aarch64-pc-windows-msvc/release" > rodio/build/taskOutputCache/cargoBuildMinGWArm64Release/buildScriptOutputDirectories
+          mkdir -p souvlaki/build/taskOutputCache/cargoBuildMacOSX64Release
+          mkdir -p souvlaki/build/taskOutputCache/cargoBuildLinuxX64Release
+          mkdir -p souvlaki/build/taskOutputCache/cargoBuildLinuxArm64Release
+          mkdir -p souvlaki/build/taskOutputCache/cargoBuildMinGWX64Release
+          mkdir -p souvlaki/build/taskOutputCache/cargoBuildMinGWArm64Release
+
+          echo "$PWD/souvlaki/target/x86_64-apple-darwin/release" > souvlaki/build/taskOutputCache/cargoBuildMacOSX64Release/buildScriptOutputDirectories
+          echo "$PWD/souvlaki/target/x86_64-unknown-linux-gnu/release" > souvlaki/build/taskOutputCache/cargoBuildLinuxX64Release/buildScriptOutputDirectories
+          echo "$PWD/souvlaki/target/aarch64-unknown-linux-gnu/release" > souvlaki/build/taskOutputCache/cargoBuildLinuxArm64Release/buildScriptOutputDirectories
+          echo "$PWD/souvlaki/target/x86_64-pc-windows-msvc/release" > souvlaki/build/taskOutputCache/cargoBuildMinGWX64Release/buildScriptOutputDirectories
+          echo "$PWD/souvlaki/target/aarch64-pc-windows-msvc/release" > souvlaki/build/taskOutputCache/cargoBuildMinGWArm64Release/buildScriptOutputDirectories
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -185,7 +285,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Publish to Maven Central
-        run: ./gradlew :rodio:publishAndReleaseToMavenCentral --no-configuration-cache
+        run: ./gradlew :rodio:publishAndReleaseToMavenCentral :souvlaki:publishAndReleaseToMavenCentral --no-configuration-cache
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
