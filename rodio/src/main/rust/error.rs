@@ -17,6 +17,9 @@ pub enum RodioError {
     #[error("invalid duration: {0}")]
     InvalidDuration(u64),
 
+    #[error("invalid buffer size (frames): {0}")]
+    InvalidBufferSize(u32),
+
     #[error("io error: {0}")]
     Io(String),
 

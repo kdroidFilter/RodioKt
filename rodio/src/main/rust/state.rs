@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use rodio::{OutputStream, OutputStreamBuilder, Sink};
+use rodio::{cpal::BufferSize, OutputStream, OutputStreamBuilder, Sink};
 
 use crate::error::RodioError;
 use crate::PlaybackCallback;
@@ -20,15 +20,31 @@ pub struct PlayerState {
 impl PlayerState {
     pub fn new() -> Result<(Self, OutputStream), RodioError> {
         let stream = OutputStreamBuilder::open_default_stream()?;
+        Ok(Self::from_stream(stream))
+    }
+
+    pub fn new_with_buffer_size_frames(buffer_size_frames: u32) -> Result<(Self, OutputStream), RodioError> {
+        if buffer_size_frames == 0 {
+            return Err(RodioError::InvalidBufferSize(buffer_size_frames));
+        }
+        let stream = OutputStreamBuilder::from_default_device()?
+            .with_buffer_size(BufferSize::Fixed(buffer_size_frames))
+            .open_stream()?;
+        Ok(Self::from_stream(stream))
+    }
+}
+
+impl PlayerState {
+    fn from_stream(stream: OutputStream) -> (Self, OutputStream) {
         let sink = Sink::connect_new(stream.mixer());
-        Ok((
+        (
             Self {
                 sink,
                 callback: None,
                 current_duration: None,
             },
             stream,
-        ))
+        )
     }
 }
 

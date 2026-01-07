@@ -658,6 +658,12 @@ pub fn create_player() -> Result<u64, RodioError> {
 }
 
 #[uniffi::export]
+pub fn create_player_with_buffer_size_frames(buffer_size_frames: u32) -> Result<u64, RodioError> {
+    let (player, stream) = PlayerState::new_with_buffer_size_frames(buffer_size_frames)?;
+    Ok(register(player, stream))
+}
+
+#[uniffi::export]
 pub fn destroy_player(id: u64) -> Result<(), RodioError> {
     unregister(id)
 }

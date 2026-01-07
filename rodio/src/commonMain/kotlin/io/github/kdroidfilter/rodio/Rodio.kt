@@ -1,6 +1,7 @@
 package io.github.kdroidfilter.rodio
 
 import io.github.kdroidfilter.rodio.native.createPlayer
+import io.github.kdroidfilter.rodio.native.createPlayerWithBufferSizeFrames
 import io.github.kdroidfilter.rodio.native.destroyPlayer
 import io.github.kdroidfilter.rodio.native.playerClear
 import io.github.kdroidfilter.rodio.native.playerClearCallback
@@ -23,8 +24,15 @@ import kotlinx.coroutines.withContext
 typealias PlaybackCallback = io.github.kdroidfilter.rodio.native.PlaybackCallback
 typealias PlaybackEvent = io.github.kdroidfilter.rodio.native.PlaybackEvent
 
-class RodioPlayer {
-    private var handle: ULong = createPlayer()
+class RodioPlayer(
+    /** Optional output buffer size in frames. Larger values raise latency but reduce underruns. */
+    bufferSizeFrames: Int? = null,
+) {
+    private var handle: ULong = when {
+        bufferSizeFrames == null -> createPlayer()
+        bufferSizeFrames <= 0 -> throw IllegalArgumentException("bufferSizeFrames must be > 0")
+        else -> createPlayerWithBufferSizeFrames(bufferSizeFrames.toUInt())
+    }
     private var closed = false
 
     private fun requireHandle(): ULong {
@@ -109,4 +117,3 @@ class RodioPlayer {
         closed = true
     }
 }
-
