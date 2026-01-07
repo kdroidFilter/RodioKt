@@ -93,6 +93,10 @@ tasks.withType<ProcessResources>().configureEach {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
+tasks.withType<Jar>().configureEach {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.withType<CargoBuildTask>().configureEach {
     onlyIf {
         val rustTarget = target.orNull ?: return@onlyIf true
