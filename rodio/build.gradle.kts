@@ -1,3 +1,4 @@
+import com.vanniktech.maven.publish.KotlinMultiplatform
 import gobley.gradle.GobleyHost
 import gobley.gradle.Variant
 import gobley.gradle.cargo.dsl.jvm
@@ -134,32 +135,45 @@ tasks.withType<RustUpTargetAddTask>().configureEach {
 //Publishing your Kotlin Multiplatform library to Maven Central
 //https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-publish-libraries.html
 mavenPublishing {
+    configure(KotlinMultiplatform(sourcesJar = true))
     publishToMavenCentral()
-    coordinates("io.github.kdroidfilter.rodio", "rodio", "1.0.0")
+    if (project.findProperty("signingInMemoryKey") != null || project.findProperty("signing.keyId") != null) {
+        signAllPublications()
+    }
+    coordinates(artifactId = "rodio")
 
     pom {
-        name = "RodioKt"
-        description = "Kotlin Multiplatform library"
-        url = "github url" //todo
+        name.set("RodioKt")
+        description.set("Kotlin Multiplatform library")
+    }
+}
 
-        licenses {
-            license {
-                name = "MIT"
-                url = "https://opensource.org/licenses/MIT"
+// Publish native runtime JARs as additional artifacts (same as wrywebview workflow).
+afterEvaluate {
+    publishing {
+        publications.withType<MavenPublication>().configureEach {
+            val isJvmPublication = name == "maven" ||
+                name.contains("jvm", ignoreCase = true) ||
+                artifactId.endsWith("-jvm")
+            if (!isJvmPublication) return@configureEach
+
+            val nativeJars = layout.buildDirectory.dir("libs").get().asFile.listFiles()
+                ?.filter {
+                    it.name.startsWith("rodio-") &&
+                        it.name.endsWith(".jar") &&
+                        !it.name.contains("sources") &&
+                        !it.name.contains("javadoc")
+                }
+                ?: emptyList()
+
+            nativeJars.forEach { jar ->
+                val classifier = jar.name.removePrefix("rodio-").removeSuffix(".jar")
+                if (classifier != "jvm") {
+                    artifact(jar) {
+                        this.classifier = classifier
+                    }
+                }
             }
-        }
-
-        developers {
-            developer {
-                id = "" //todo
-                name = "" //todo
-                email = "" //todo
-            }
-        }
-
-        scm {
-            url = "github url" //todo
         }
     }
-    if (project.hasProperty("signing.keyId")) signAllPublications()
 }
