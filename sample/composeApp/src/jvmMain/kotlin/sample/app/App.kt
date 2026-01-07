@@ -13,9 +13,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material.LinearProgressIndicator
+import androidx.compose.material.Slider
+import androidx.compose.material.Tab
+import androidx.compose.material.TabRow
+import androidx.compose.material.TabRowDefaults
+import androidx.compose.material.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -38,14 +45,23 @@ import java.awt.FileDialog
 import java.awt.Frame
 import java.io.File
 
+private enum class SourceTab { File, Stream }
+
 @Composable
 fun App() {
     val player = remember { RodioPlayer() }
     val scope = rememberCoroutineScope()
+    var activeTab by remember { mutableStateOf(SourceTab.File) }
     var filePath by remember { mutableStateOf("") }
+    var streamUrl by remember { mutableStateOf("https://broadcast.adpronet.com/radio/6060/radio.mp3") }
     var playbackEvent by remember { mutableStateOf(PlaybackEvent.STOPPED) }
     var positionMs by remember { mutableStateOf(0L) }
     var durationMs by remember { mutableStateOf<Long?>(null) }
+    var userSeekMs by remember { mutableStateOf<Long?>(null) }
+    var seekable by remember { mutableStateOf(false) }
+
+    val accentColor = Color(0xFF2563EB)
+    val tabBackground = Color(0xFFEFF3FB)
 
     val callback = remember {
         object : PlaybackCallback {
@@ -76,6 +92,7 @@ fun App() {
         while (true) {
             positionMs = player.getPositionMs()
             durationMs = player.getDurationMs()
+            seekable = runCatching { player.isSeekable() }.getOrDefault(false)
             delay(200)
         }
     }
@@ -89,6 +106,11 @@ fun App() {
     val progress = durationMs
         ?.takeIf { it > 0L }
         ?.let { positionMs.coerceAtMost(it).toFloat() / it.toFloat() }
+    val displayPositionMs = userSeekMs ?: positionMs
+    val hasSource = when (activeTab) {
+        SourceTab.File -> filePath.isNotBlank()
+        SourceTab.Stream -> streamUrl.isNotBlank()
+    }
 
     Box(
         modifier = Modifier
@@ -103,54 +125,148 @@ fun App() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            BasicText("RodioKt - Lecteur local", style = TextStyle(color = Color.Black))
-            Spacer(modifier = Modifier.height(16.dp))
+            BasicText("RodioKt - Minimal player", style = TextStyle(color = Color.Black))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            BasicText("Fichier audio", style = TextStyle(color = Color.Black))
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                BasicTextField(
-                    value = filePath,
-                    onValueChange = { filePath = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = Color.Black),
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(Color(0xFFF2F2F2))
-                        .padding(10.dp),
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(onClick = { filePath = chooseLocalFile() ?: filePath }) {
-                    BasicText("Parcourir")
+            TabRow(
+                selectedTabIndex = activeTab.ordinal,
+                backgroundColor = Color.Transparent,
+                contentColor = accentColor,
+                divider = {},
+                indicator = { tabPositions ->
+                    TabRowDefaults.Indicator(
+                        modifier = Modifier
+                            .tabIndicatorOffset(tabPositions[activeTab.ordinal])
+                            .padding(horizontal = 16.dp)
+                            .height(3.dp),
+                        color = accentColor,
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(tabBackground, RoundedCornerShape(999.dp)),
+            ) {
+                SourceTab.values().forEachIndexed { index, tab ->
+                    val selected = activeTab.ordinal == index
+                    Tab(
+                        selected = selected,
+                        onClick = { activeTab = tab },
+                        selectedContentColor = accentColor,
+                        unselectedContentColor = Color(0xFF6B7280),
+                        text = {
+                            Text(
+                                text = if (tab == SourceTab.File) "File" else "Stream",
+                                style = TextStyle(color = if (selected) accentColor else Color(0xFF6B7280)),
+                            )
+                        },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            when (activeTab) {
+                SourceTab.File -> {
+                    BasicText("Local file", style = TextStyle(color = Color.Black))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        BasicTextField(
+                            value = filePath,
+                            onValueChange = { filePath = it },
+                            singleLine = true,
+                            textStyle = TextStyle(color = Color.Black),
+                            modifier = Modifier
+                                .weight(1f)
+                                .background(Color(0xFFF2F2F2))
+                                .padding(10.dp),
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(onClick = { filePath = chooseLocalFile() ?: filePath }) {
+                            BasicText("Browse")
+                        }
+                    }
+                }
+                SourceTab.Stream -> {
+                    BasicText("Stream URL (http/https)", style = TextStyle(color = Color.Black))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    BasicTextField(
+                        value = streamUrl,
+                        onValueChange = { streamUrl = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = Color.Black),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF2F2F2))
+                            .padding(10.dp),
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
 
-            BasicText("Statut: $statusLabel", style = TextStyle(color = Color.Black))
+            BasicText("Status: $statusLabel", style = TextStyle(color = Color.Black))
             Spacer(modifier = Modifier.height(8.dp))
-            if (progress == null) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            val totalDuration = durationMs
+            val durationLabel = totalDuration?.let { formatTime(it) } ?: "--:--"
+            if (hasSource && playbackEvent != PlaybackEvent.STOPPED) {
+                if (activeTab == SourceTab.File && seekable && totalDuration != null && totalDuration > 0) {
+                    val safeDuration = totalDuration
+                    val sliderValue = displayPositionMs
+                        .coerceIn(0, safeDuration)
+                        .toFloat()
+                    Slider(
+                        value = sliderValue,
+                        onValueChange = { newValue -> userSeekMs = newValue.toLong() },
+                        valueRange = 0f..safeDuration.toFloat(),
+                        modifier = Modifier.fillMaxWidth(),
+                        onValueChangeFinished = {
+                            userSeekMs?.let { target ->
+                                scope.launch {
+                                    runCatching { player.seekToMs(target) }
+                                        .onFailure { println("Seek error: ${it.message}") }
+                                }
+                            }
+                            userSeekMs = null
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    BasicText(
+                        "${formatTime(displayPositionMs)} / $durationLabel",
+                        style = TextStyle(color = Color.DarkGray),
+                    )
+                } else {
+                    if (progress == null) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    } else {
+                        LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    BasicText(
+                        "${formatTime(displayPositionMs)} / $durationLabel",
+                        style = TextStyle(color = Color.DarkGray),
+                    )
+                }
             } else {
-                LinearProgressIndicator(progress = progress, modifier = Modifier.fillMaxWidth())
+                BasicText("Load a file or URL to show progress", style = TextStyle(color = Color.DarkGray))
             }
-            Spacer(modifier = Modifier.height(6.dp))
-            val durationLabel = durationMs?.let { formatTime(it) } ?: "--:--"
-            BasicText(
-                "${formatTime(positionMs)} / $durationLabel",
-                style = TextStyle(color = Color.DarkGray),
-            )
             Spacer(modifier = Modifier.height(16.dp))
 
             Row(horizontalArrangement = Arrangement.Center) {
                 Button(
                     onClick = {
-                        if (filePath.isNotBlank()) {
-                            player.playFile(filePath, loop = false)
+                        when (activeTab) {
+                            SourceTab.File -> if (filePath.isNotBlank()) {
+                                player.playFile(filePath, loop = false)
+                            }
+                            SourceTab.Stream -> if (streamUrl.isNotBlank()) {
+                                scope.launch {
+                                    runCatching { player.playUrl(streamUrl, loop = false) }
+                                        .onFailure { println("Stream error: ${it.message}") }
+                                }
+                            }
                         }
                     },
-                    enabled = filePath.isNotBlank(),
+                    enabled = hasSource,
                 ) {
-                    BasicText("Lire")
+                    BasicText("Play")
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
@@ -172,7 +288,7 @@ fun App() {
 }
 
 private fun chooseLocalFile(): String? {
-    val dialog = FileDialog(null as Frame?, "Choisir un fichier audio", FileDialog.LOAD)
+    val dialog = FileDialog(null as Frame?, "Choose an audio file", FileDialog.LOAD)
     dialog.isVisible = true
     val fileName = dialog.file ?: return null
     val directory = dialog.directory ?: return fileName
