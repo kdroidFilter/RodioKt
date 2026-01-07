@@ -2,23 +2,23 @@
 
 RodioKt is a Kotlin Multiplatform wrapper around the Rust `rodio` engine. It offers a compact API to play local files, HTTP(S)/HLS streams, internet radio (ICY), and to quickly generate a sine tone for testing.
 
-## Highlights
+## Highlights ✨
 - Play local files, direct URLs, HLS streams, and internet radio (with ICY metadata).
 - Callbacks to track state (`Connecting`, `Playing`, `Paused`, `Stopped`), receive metadata, and surface errors.
 - Volume control, position/duration retrieval, and seeking when the source is seekable.
 - `suspend` helpers so playback can start off the main thread.
 - Tone generator (`playSine`) to verify audio output quickly.
 
-## Requirements
+## Requirements ⚙️
 - JDK 17 (the project targets Java 17 toolchains).
 - Gradle via the provided wrapper.
 - Rust toolchain (rustup + cargo) to build the library or publish locally.
 
-## Installation
+## Installation 📦
 ### From Maven Central
 ```kotlin
 dependencies {
-    implementation("io.github.kdroidfilter:rodio:1.0.0")
+    implementation("io.github.kdroidfilter:rodio:<version>")
 }
 ```
 
@@ -27,7 +27,7 @@ dependencies {
 - Publish to your local Maven for integration tests: `./gradlew :rodio:publishToMavenLocal`
 - Run the Compose Desktop sample: `./gradlew :sample:composeApp:run`
 
-## Quick start
+## Quick start 🚀
 ```kotlin
 import io.github.kdroidfilter.rodio.RodioPlayer
 import io.github.kdroidfilter.rodio.PlaybackCallback
@@ -57,7 +57,7 @@ player.playUrl("https://example.com/stream.mp3", loop = false)
 player.close()
 ```
 
-## Core API
+## Core API 🧭
 - Playback
   - `playFile(path: String, loop: Boolean)`
   - `playUrl(url: String, loop: Boolean = false, callback: PlaybackCallback? = null)` (auto-detects HLS)
@@ -75,7 +75,7 @@ player.close()
 
 Always close the player when you are done: `player.close()`.
 
-## Focused examples
+## Focused examples 🎯
 ### Play a local file
 ```kotlin
 val player = RodioPlayer()
@@ -100,7 +100,7 @@ scope.launch {
 }
 ```
 
-## HTTP/TLS customization
+## HTTP/TLS customization 🛡️
 Allow self-signed certificates or add extra roots if needed:
 ```kotlin
 import io.github.kdroidfilter.rodio.RodioHttp
@@ -111,12 +111,12 @@ RodioHttp.clearRootCerts()                        // Restore defaults
 ```
 These options apply to every HTTP(S) request used by the player.
 
-## Develop and test
+## Develop and test 🧪
 - Build the library only: `./gradlew :rodio:build`
 - Check network/playback integration (JVM tests): `./gradlew :rodio:jvmTest`
 - Manual verification with the demo app: `./gradlew :sample:composeApp:run`
 
-## Limitations and notes
+## Limitations and notes ⚠️
 - Duration may be unknown for some live streams; `getDurationMs()` can return `null`.
 - HLS is supported, but encrypted, byte-range, or init-segment-based streams are not.
 - Looping (`loop = true`) is not available for HLS.
