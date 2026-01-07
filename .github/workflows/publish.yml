@@ -154,6 +154,15 @@ jobs:
           ls -la rodio/src/jvmMain/resources/win32-x86-64/
           ls -la rodio/src/jvmMain/resources/win32-arm64/
 
+      - name: Create Gobley cache directories
+        run: |
+          # Create empty cache directories for non-host targets to prevent Gobley errors
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMacOSX64Release/buildScriptOutputDirectories
+          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxX64Release/buildScriptOutputDirectories
+          mkdir -p rodio/build/taskOutputCache/cargoBuildLinuxArm64Release/buildScriptOutputDirectories
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWX64Release/buildScriptOutputDirectories
+          mkdir -p rodio/build/taskOutputCache/cargoBuildMinGWArm64Release/buildScriptOutputDirectories
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
